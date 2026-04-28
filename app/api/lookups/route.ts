@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const country = searchParams.get('country') || 'US'
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const [gatewaysRes, carriersRes, countriesRes] = await Promise.all([
       supabase

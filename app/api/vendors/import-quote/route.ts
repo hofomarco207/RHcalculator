@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { deactivateCurrentRates, getNextVersion } from '@/lib/supabase/query-helpers'
 import type { ImportQuoteRequest } from '@/types'
 
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未提供報價數據' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const today = new Date().toISOString().split('T')[0]
     const results: Array<{ vendor_name: string; vendor_id: string; table: string; count: number; version: number }> = []
 

@@ -12,10 +12,8 @@ export type PricingMode =
   | 'segmented'
   | 'bc_combined'
   | 'bcd_combined'
-  | 'multi_b'
-  | 'multi_b_b2c'
 
-export type SegmentKey = 'seg_a' | 'seg_b' | 'seg_c' | 'seg_d' | 'seg_bc' | 'seg_b2' | 'seg_b2c'
+export type SegmentKey = 'seg_a' | 'seg_b' | 'seg_c' | 'seg_d' | 'seg_bc'
 
 export interface SegmentCosts {
   seg_a?: number
@@ -23,8 +21,6 @@ export interface SegmentCosts {
   seg_c?: number
   seg_d?: number
   seg_bc?: number | null
-  seg_b2?: number | null
-  seg_b2c?: number | null
 }
 
 /**
@@ -39,10 +35,6 @@ export function expectedSegments(mode: PricingMode): SegmentKey[] {
       return ['seg_a', 'seg_bc', 'seg_d']
     case 'bcd_combined':
       return ['seg_a', 'seg_d']
-    case 'multi_b':
-      return ['seg_a', 'seg_b', 'seg_b2', 'seg_c', 'seg_d']
-    case 'multi_b_b2c':
-      return ['seg_a', 'seg_b', 'seg_b2c', 'seg_d']
   }
 }
 

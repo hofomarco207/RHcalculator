@@ -242,79 +242,15 @@ export function scenarioSegCTooltip(detail: BracketDetail['seg_c'], total: numbe
 
 export function scenarioSegBCTooltip(detail: BracketDetail['seg_bc'], total: number, mul = 1, cur = 'HKD') {
   if (!detail) return <><span className="text-teal-400 font-semibold">BC 空運+清關</span>{'\n'}<span className="text-amber-400">= {(total * mul).toFixed(2)} {cur}</span></>
-  const bubble = detail.bubble_ratio ?? 1.0
-  const hasBubble = bubble !== 1.0
-  const rateLabel = hasBubble
-    ? `${detail.rate_per_kg} ${detail.currency}/kg × ${detail.weight_kg.toFixed(2)} kg × ${bubble} 泡率`
-    : `${detail.rate_per_kg} ${detail.currency}/kg × ${detail.weight_kg.toFixed(2)} kg`
-  const handlingLabel = `操作費 ${detail.handling_fee} ${detail.currency}`
+  const fuelPct = detail.fuel_surcharge_pct ?? 0
+  const rateLabel = `${detail.rate_per_kg} ${detail.currency}/kg × ${detail.weight_kg.toFixed(2)} kg`
+  const fuelLabel = fuelPct > 0 ? `× (1 + ${fuelPct}% 燃油)` : ''
   return (
     <>
       <span className="text-teal-400 font-semibold">BC 空運+清關</span>
       {'\n'}
       {rateLabel}
-      {'\n'}
-      + {handlingLabel}
-      {'\n'}
-      = {detail.cost_in_currency.toFixed(2)} {detail.currency}
-      {detail.exchange_rate_to_hkd !== 1 && (
-        <>
-          {'\n'}
-          × {detail.exchange_rate_to_hkd.toFixed(4)} (→HKD)
-        </>
-      )}
-      {'\n'}
-      <span className="text-amber-400">= {(total * mul).toFixed(2)} {cur}</span>
-    </>
-  )
-}
-
-export function scenarioSegB2Tooltip(detail: BracketDetail['seg_b2'], total: number, mul = 1, cur = 'HKD') {
-  if (!detail) return <><span className="text-blue-400 font-semibold">B2段 空運</span>{'\n'}<span className="text-amber-400">= {(total * mul).toFixed(2)} {cur}</span></>
-  return (
-    <>
-      <span className="text-blue-400 font-semibold">B2段 空運</span>
-      {detail.gateways.length > 0 ? (
-        detail.gateways.map((gw) => (
-          <span key={gw.gateway}>
-            {'\n'}
-            <span className="text-blue-300">{gw.gateway}</span> ({(gw.proportion * 100).toFixed(0)}%) {gw.tier_label}
-            {gw.is_median && gw.service_count && gw.service_count >= 2 ? (
-              <span className="text-amber-300"> ({gw.service_count}家服務取中位)</span>
-            ) : null}
-            {'\n'}
-            {'  '}運費 {gw.rate_per_kg.toFixed(2)} × {gw.bubble_rate}(泡) × {(gw.freight_cost / (gw.rate_per_kg * gw.bubble_rate || 1)).toFixed(2)}kg = {gw.freight_cost.toFixed(2)}
-            {'\n'}
-            {'  '}提單 {gw.mawb_fixed_total.toFixed(0)} ÷ {Math.round(gw.tickets_per_mawb)}票 = {gw.mawb_amortized.toFixed(2)}
-            {'\n'}
-            {'  '}小計 {gw.subtotal.toFixed(2)} HKD
-          </span>
-        ))
-      ) : (
-        <span>{'\n'}簡易費率</span>
-      )}
-      {'\n'}
-      <span className="text-amber-400">= {(total * mul).toFixed(2)} {cur}</span>
-    </>
-  )
-}
-
-export function scenarioSegB2CTooltip(detail: BracketDetail['seg_b2c'], total: number, mul = 1, cur = 'HKD') {
-  if (!detail) return <><span className="text-teal-400 font-semibold">B2C 空運+清關（包清）</span>{'\n'}<span className="text-amber-400">= {(total * mul).toFixed(2)} {cur}</span></>
-  const bubble = detail.bubble_ratio ?? 1.0
-  const hasBubble = bubble !== 1.0
-  const rateLabel = hasBubble
-    ? `${detail.rate_per_kg} ${detail.currency}/kg × ${detail.weight_kg.toFixed(2)} kg × ${bubble} 泡率`
-    : `${detail.rate_per_kg} ${detail.currency}/kg × ${detail.weight_kg.toFixed(2)} kg`
-  const handlingLabel = `操作費 ${detail.handling_fee} ${detail.currency}`
-  return (
-    <>
-      <span className="text-teal-400 font-semibold">B2C 空運+清關（包清）</span>
-      {detail.vendor_name && <>{'\n'}{detail.vendor_name}</>}
-      {'\n'}
-      {rateLabel}
-      {'\n'}
-      + {handlingLabel}
+      {fuelLabel && <>{'\n'}{fuelLabel}</>}
       {'\n'}
       = {detail.cost_in_currency.toFixed(2)} {detail.currency}
       {detail.exchange_rate_to_hkd !== 1 && (

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { loadScenarioComputeData, computeAtWeights } from '@/lib/api-helpers/scenario-data-loader'
 import { SCENARIO_VERIFICATION_WEIGHTS } from '@/types'
 import type { Scenario } from '@/types/scenario'
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '至少需要 2 個方案進行比較' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('scenarios')
       .select('*')

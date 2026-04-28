@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 type CrcRow = {
   id: string
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const serviceCode = url.searchParams.get('service_code')
     const includeHistory = url.searchParams.get('include_history') === '1'
     const withPrevious = url.searchParams.get('with_previous') === '1'
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     let query = supabase
       .from('competitor_rate_cards')
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '沒有資料' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Validate country codes
     const { data: countries } = await supabase.from('countries').select('code')
@@ -242,6 +242,74 @@ export async function POST(request: NextRequest) {
       console.error('Supabase insert error:', error.message, error.details, error.hint)
       throw new Error(error.message)
     }
+
+    // ── Yuntu dual-write: also sync to vendor_d_tiered_rates ──────────────────
+    // When the imported cards include 雲途, look up the designated D-segment
+    // Yuntu vendor and overwrite its tiered rates with the new version.
+    const yuntuCards = cards.filter((c) => c.competitor_name === '雲途')
+    if (yuntuCards.length > 0) {
+      const { data: yuntuVendors } = await supabase
+        .from('vendors')
+        .select('id')
+        .eq('segment', 'D')
+        .ilike('name', '%雲途%')
+        .limit(1)
+
+      const yuntuVendorId = yuntuVendors?.[0]?.id
+      if (yuntuVendorId) {
+        // Deactivate existing D-tiered rates for this vendor
+        const todayStr = today
+        await supabase
+          .from('vendor_d_tiered_rates')
+          .update({ valid_to: todayStr })
+          .eq('vendor_id', yuntuVendorId)
+          .is('valid_to', null)
+
+        // Get next version
+        const { data: latestVersion } = await supabase
+          .from('vendor_d_tiered_rates')
+          .select('version')
+          .eq('vendor_id', yuntuVendorId)
+          .order('version', { ascending: false })
+          .limit(1)
+        const nextVer = ((latestVersion?.[0]?.version as number | undefined) ?? 0) + 1
+
+        // Build new tiered rate rows — only for cards with a known country_code
+        const tieredRows = yuntuCards
+          .filter((c) => c.country_code && validCodes.has(c.country_code))
+          .flatMap((c) =>
+          c.brackets
+            .filter((b) => b.weight_min != null && b.weight_max != null && b.rate_per_kg > 0)
+            .map((b) => ({
+              vendor_id: yuntuVendorId,
+              country_code: c.country_code!,
+              country_name: c.country_name_en,
+              weight_min_kg: b.weight_min,
+              weight_max_kg: b.weight_max,
+              rate_per_kg: b.rate_per_kg,
+              registration_fee: b.reg_fee ?? 0,
+              currency: c.currency ?? 'HKD',
+              version: nextVer,
+              valid_from: c.effective_date || today,
+              valid_to: null,
+              is_current: true,
+              source: 'yuntu_import',
+              source_file: source_file ?? null,
+            }))
+          )
+
+        if (tieredRows.length > 0) {
+          const { error: tieredErr } = await supabase
+            .from('vendor_d_tiered_rates')
+            .insert(tieredRows)
+          if (tieredErr) {
+            console.error('Yuntu D-tiered sync error:', tieredErr.message)
+          }
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     return NextResponse.json({ imported: data?.length ?? 0 })
   } catch (error) {
     const msg = error instanceof Error ? error.message : '匯入失敗'
@@ -279,7 +347,7 @@ export async function PATCH(request: NextRequest) {
     if (nextLabel === undefined) {
       return NextResponse.json({ error: 'vendor_label is required' }, { status: 400 })
     }
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { error, count } = await supabase
       .from('competitor_rate_cards')
       .update({ vendor_label: nextLabel }, { count: 'exact' })
@@ -309,7 +377,7 @@ export async function DELETE(request: NextRequest) {
         { status: 400 },
       )
     }
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { error } = await supabase
       .from('competitor_rate_cards')
       .delete()

@@ -24,8 +24,8 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "iMile 價卡生成器",
-  description: "iMile Rate Card Creator",
+  title: "FlexForward 價格生成器",
+  description: "FlexForward Pricing Engine",
 };
 
 export default function RootLayout({

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 /**
  * GET /api/competitor-rate-cards/versions
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url)
     const competitorName = url.searchParams.get('competitor_name')
     const serviceCode = url.searchParams.get('service_code')
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     let query = supabase
       .from('competitor_rate_cards')

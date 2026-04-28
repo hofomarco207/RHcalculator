@@ -15,13 +15,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   Table,
   TableBody,
   TableCell,
@@ -31,17 +24,14 @@ import {
 } from '@/components/ui/table'
 import { Loader2, Trash2, Eye } from 'lucide-react'
 import { toast } from 'sonner'
-import { getCountryFlag } from '@/lib/data/country-seed'
-import { getMarginColorClass } from '@/lib/utils/margin'
 import type { Scenario, BracketCost } from '@/types/scenario'
-import type { RateCard, RateCardBracket } from '@/types'
+import type { GlobalRateCard, RateCardCountryBracket } from '@/types'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ScenarioRow {
   id: string
   name: string
-  country_code: string
   pricing_mode?: string
   origin_warehouse?: string
   updated_at?: string
@@ -49,21 +39,7 @@ interface ScenarioRow {
   results?: { cost_per_bracket?: BracketCost[]; avg_cost_per_ticket?: number }
 }
 
-interface RateCardRow {
-  id: string
-  name: string
-  country_code: string
-  product_type?: string
-  target_margin?: number
-  brackets: RateCardBracket[]
-  scenario_id?: string | null
-  created_at?: string
-}
-
-interface Country {
-  code: string
-  name_zh: string
-}
+type RateCardRow = GlobalRateCard & { country_count?: number }
 
 // ─── Panel ───────────────────────────────────────────────────────────────────
 
@@ -71,13 +47,13 @@ export default function LibraryPanel() {
   const [activeTab, setActiveTab] = useState<'scenarios' | 'rate-cards'>('scenarios')
   const [scenarios, setScenarios] = useState<ScenarioRow[]>([])
   const [rateCards, setRateCards] = useState<RateCardRow[]>([])
-  const [countries, setCountries] = useState<Country[]>([])
   const [loading, setLoading] = useState(true)
-  const [countryFilter, setCountryFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
+  const [showAllVersions, setShowAllVersions] = useState(false)
 
   const [viewScenario, setViewScenario] = useState<Scenario | null>(null)
   const [viewRateCard, setViewRateCard] = useState<RateCardRow | null>(null)
+  const [viewRateCardDetail, setViewRateCardDetail] = useState<(GlobalRateCard & { country_brackets: RateCardCountryBracket[] }) | null>(null)
   const [viewLoading, setViewLoading] = useState(false)
 
   const [deleteTarget, setDeleteTarget] = useState<
@@ -88,46 +64,36 @@ export default function LibraryPanel() {
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [scRes, rcRes, cRes] = await Promise.all([
+      const versionParam = showAllVersions ? '&is_current=0' : ''
+      const [scRes, rcRes] = await Promise.all([
         fetch('/api/scenarios?country=all&limit=500'),
-        fetch('/api/rate-cards?country_code=all&limit=500'),
-        fetch('/api/countries'),
+        fetch(`/api/rate-cards?limit=500${versionParam}`),
       ])
       if (scRes.ok) setScenarios(await scRes.json())
       if (rcRes.ok) setRateCards(await rcRes.json())
-      if (cRes.ok) setCountries(await cRes.json())
     } catch {
       toast.error('載入失敗')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [showAllVersions])
 
   useEffect(() => { loadAll() }, [loadAll])
 
   // ── Filter helpers ──
-  const availableCountries = useMemo(() => {
-    const codes = new Set<string>()
-    scenarios.forEach((s) => codes.add(s.country_code))
-    rateCards.forEach((r) => codes.add(r.country_code))
-    return countries.filter((c) => codes.has(c.code))
-  }, [scenarios, rateCards, countries])
-
   const filteredScenarios = useMemo(() => {
-    return scenarios.filter((s) => {
-      if (countryFilter !== 'all' && s.country_code !== countryFilter) return false
-      if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false
-      return true
-    })
-  }, [scenarios, countryFilter, search])
+    if (!search) return scenarios
+    const q = search.toLowerCase()
+    return scenarios.filter((s) => s.name.toLowerCase().includes(q))
+  }, [scenarios, search])
 
   const filteredRateCards = useMemo(() => {
-    return rateCards.filter((r) => {
-      if (countryFilter !== 'all' && r.country_code !== countryFilter) return false
-      if (search && !r.name.toLowerCase().includes(search.toLowerCase())) return false
-      return true
-    })
-  }, [rateCards, countryFilter, search])
+    if (!search) return rateCards
+    const q = search.toLowerCase()
+    return rateCards.filter((r) =>
+      r.product_name.toLowerCase().includes(q) || r.product_code.toLowerCase().includes(q)
+    )
+  }, [rateCards, search])
 
   // ── View handlers ──
   const handleViewScenario = useCallback(async (id: string) => {
@@ -136,6 +102,18 @@ export default function LibraryPanel() {
       const res = await fetch(`/api/scenarios/${id}`)
       if (res.ok) setViewScenario(await res.json())
       else toast.error('載入失敗')
+    } finally {
+      setViewLoading(false)
+    }
+  }, [])
+
+  const handleViewRateCard = useCallback(async (card: RateCardRow) => {
+    setViewRateCard(card)
+    setViewRateCardDetail(null)
+    setViewLoading(true)
+    try {
+      const res = await fetch(`/api/rate-cards/${card.id}`)
+      if (res.ok) setViewRateCardDetail(await res.json())
     } finally {
       setViewLoading(false)
     }
@@ -166,24 +144,13 @@ export default function LibraryPanel() {
     }
   }, [deleteTarget])
 
-  // ── Totals for header ──
-  const totals = useMemo(() => {
-    const byCountry = new Map<string, { sc: number; rc: number }>()
-    for (const s of scenarios) {
-      const cur = byCountry.get(s.country_code) ?? { sc: 0, rc: 0 }
-      byCountry.set(s.country_code, { ...cur, sc: cur.sc + 1 })
-    }
-    for (const r of rateCards) {
-      const cur = byCountry.get(r.country_code) ?? { sc: 0, rc: 0 }
-      byCountry.set(r.country_code, { ...cur, rc: cur.rc + 1 })
-    }
-    return {
-      scenarioTotal: scenarios.length,
-      rateCardTotal: rateCards.length,
-      countryCount: byCountry.size,
-      byCountry: Array.from(byCountry.entries()).sort((a, b) => a[0].localeCompare(b[0])),
-    }
-  }, [scenarios, rateCards])
+  // ── Totals ──
+  const totals = useMemo(() => ({
+    scenarioTotal: scenarios.length,
+    rateCardTotal: rateCards.length,
+    currentCards: rateCards.filter((r) => r.is_current).length,
+    totalCountries: rateCards.reduce((sum, r) => sum + (r.country_count ?? 0), 0),
+  }), [scenarios, rateCards])
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -192,7 +159,7 @@ export default function LibraryPanel() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">資料總覽</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">集中管理各國方案與價卡</p>
+          <p className="text-sm text-muted-foreground mt-0.5">集中管理方案與全球價卡</p>
         </div>
         <Button variant="outline" size="sm" onClick={loadAll} disabled={loading}>
           {loading && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
@@ -207,52 +174,37 @@ export default function LibraryPanel() {
           <p className="text-2xl font-bold font-mono">{totals.scenarioTotal}</p>
         </CardContent></Card>
         <Card><CardContent className="pt-4">
-          <p className="text-xs text-muted-foreground">總價卡數</p>
+          <p className="text-xs text-muted-foreground">現行價卡</p>
+          <p className="text-2xl font-bold font-mono">{totals.currentCards}</p>
+        </CardContent></Card>
+        <Card><CardContent className="pt-4">
+          <p className="text-xs text-muted-foreground">全部價卡版本</p>
           <p className="text-2xl font-bold font-mono">{totals.rateCardTotal}</p>
         </CardContent></Card>
         <Card><CardContent className="pt-4">
-          <p className="text-xs text-muted-foreground">涉及國家</p>
-          <p className="text-2xl font-bold font-mono">{totals.countryCount}</p>
-        </CardContent></Card>
-        <Card><CardContent className="pt-4">
-          <p className="text-xs text-muted-foreground mb-1">各國分布</p>
-          <div className="flex flex-wrap gap-1">
-            {totals.byCountry.slice(0, 8).map(([code, cnt]) => (
-              <Badge key={code} variant="secondary" className="text-[10px] font-normal">
-                {getCountryFlag(code)} {code} · {cnt.sc + cnt.rc}
-              </Badge>
-            ))}
-            {totals.byCountry.length > 8 && (
-              <Badge variant="secondary" className="text-[10px] font-normal">
-                +{totals.byCountry.length - 8}
-              </Badge>
-            )}
-          </div>
+          <p className="text-xs text-muted-foreground">涵蓋國家數（合計）</p>
+          <p className="text-2xl font-bold font-mono">{totals.totalCountries}</p>
         </CardContent></Card>
       </div>
 
       {/* Filters */}
       <Card>
         <CardContent className="pt-4 flex flex-wrap items-center gap-3">
-          <Select value={countryFilter} onValueChange={setCountryFilter}>
-            <SelectTrigger className="w-44 h-8 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部國家</SelectItem>
-              {availableCountries.map((c) => (
-                <SelectItem key={c.code} value={c.code}>
-                  {getCountryFlag(c.code)} {c.name_zh} ({c.code})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           <Input
-            placeholder="搜尋名稱..."
+            placeholder="搜尋名稱或代碼..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-56 h-8 text-sm"
           />
+          <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showAllVersions}
+              onChange={(e) => setShowAllVersions(e.target.checked)}
+              className="rounded"
+            />
+            顯示所有版本
+          </label>
           <span className="text-xs text-muted-foreground ml-auto">
             方案 {filteredScenarios.length} · 價卡 {filteredRateCards.length}
           </span>
@@ -281,7 +233,6 @@ export default function LibraryPanel() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>國家</TableHead>
                         <TableHead>名稱</TableHead>
                         <TableHead>定價模式</TableHead>
                         <TableHead>始發</TableHead>
@@ -292,9 +243,6 @@ export default function LibraryPanel() {
                     <TableBody>
                       {filteredScenarios.map((s) => (
                         <TableRow key={s.id}>
-                          <TableCell className="font-mono text-xs">
-                            {getCountryFlag(s.country_code)} {s.country_code}
-                          </TableCell>
                           <TableCell className="font-medium">{s.name}</TableCell>
                           <TableCell>
                             {s.pricing_mode && <Badge variant="outline" className="text-[10px]">{s.pricing_mode}</Badge>}
@@ -349,29 +297,35 @@ export default function LibraryPanel() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>國家</TableHead>
-                        <TableHead>名稱</TableHead>
-                        <TableHead>產品類型</TableHead>
-                        <TableHead>目標毛利</TableHead>
-                        <TableHead>段數</TableHead>
-                        <TableHead>建立時間</TableHead>
+                        <TableHead>產品名稱</TableHead>
+                        <TableHead>代碼</TableHead>
+                        <TableHead>幣別</TableHead>
+                        <TableHead>版本日期</TableHead>
+                        <TableHead className="text-right">國家數</TableHead>
+                        <TableHead>版本</TableHead>
+                        <TableHead>狀態</TableHead>
                         <TableHead className="text-right">操作</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredRateCards.map((r) => (
                         <TableRow key={r.id}>
-                          <TableCell className="font-mono text-xs">
-                            {getCountryFlag(r.country_code)} {r.country_code}
-                          </TableCell>
-                          <TableCell className="font-medium">{r.name}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{r.product_type ?? '-'}</TableCell>
-                          <TableCell className="font-mono text-xs">
-                            {r.target_margin != null ? `${(r.target_margin * 100).toFixed(0)}%` : '-'}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">{r.brackets?.length ?? 0}</TableCell>
+                          <TableCell className="font-medium">{r.product_name}</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">{r.product_code}</TableCell>
+                          <TableCell className="text-xs">{r.currency}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {r.created_at ? new Date(r.created_at).toLocaleDateString() : '-'}
+                            {r.valid_from ?? '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {r.country_count ?? 0}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">v{r.version}</TableCell>
+                          <TableCell>
+                            {r.is_current ? (
+                              <Badge className="text-[10px] bg-green-100 text-green-700 border-green-200">現行</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-[10px]">已封存</Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center gap-1 justify-end">
@@ -379,7 +333,7 @@ export default function LibraryPanel() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-7 w-7 p-0"
-                                onClick={() => setViewRateCard(r)}
+                                onClick={() => handleViewRateCard(r)}
                               >
                                 <Eye className="h-3.5 w-3.5" />
                               </Button>
@@ -387,7 +341,7 @@ export default function LibraryPanel() {
                                 size="sm"
                                 variant="ghost"
                                 className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                                onClick={() => setDeleteTarget({ type: 'rate-card', id: r.id, name: r.name })}
+                                onClick={() => setDeleteTarget({ type: 'rate-card', id: r.id!, name: r.product_name })}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
@@ -410,11 +364,9 @@ export default function LibraryPanel() {
           {viewScenario && (
             <>
               <DialogHeader>
-                <DialogTitle>
-                  {getCountryFlag(viewScenario.country_code)} {viewScenario.name}
-                </DialogTitle>
+                <DialogTitle>{viewScenario.name}</DialogTitle>
                 <DialogDescription>
-                  {viewScenario.pricing_mode} · {viewScenario.country_code}
+                  {viewScenario.pricing_mode}
                   {viewScenario.origin_warehouse && ` · 始發 ${viewScenario.origin_warehouse}`}
                 </DialogDescription>
               </DialogHeader>
@@ -425,20 +377,24 @@ export default function LibraryPanel() {
       </Dialog>
 
       {/* Rate card view dialog */}
-      <Dialog open={!!viewRateCard} onOpenChange={(o) => !o && setViewRateCard(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+      <Dialog open={!!viewRateCard} onOpenChange={(o) => !o && (setViewRateCard(null), setViewRateCardDetail(null))}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           {viewRateCard && (
             <>
               <DialogHeader>
-                <DialogTitle>
-                  {getCountryFlag(viewRateCard.country_code)} {viewRateCard.name}
-                </DialogTitle>
+                <DialogTitle>{viewRateCard.product_name}</DialogTitle>
                 <DialogDescription>
-                  {viewRateCard.product_type ?? '-'} · 目標毛利{' '}
-                  {viewRateCard.target_margin != null ? `${(viewRateCard.target_margin * 100).toFixed(0)}%` : '-'}
+                  {viewRateCard.product_code} · {viewRateCard.currency} · v{viewRateCard.version}
+                  {viewRateCard.valid_from && ` · 生效日 ${viewRateCard.valid_from}`}
                 </DialogDescription>
               </DialogHeader>
-              <RateCardDetails card={viewRateCard} />
+              {viewLoading ? (
+                <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> 載入中
+                </div>
+              ) : viewRateCardDetail ? (
+                <RateCardDetails card={viewRateCardDetail} />
+              ) : null}
             </>
           )}
         </DialogContent>
@@ -478,7 +434,7 @@ function ScenarioDetails({ scenario }: { scenario: Scenario }) {
         <Stat label="週票量" value={scenario.weekly_tickets?.toLocaleString() ?? '-'} />
         <Stat label="週重量" value={scenario.weekly_kg ? `${scenario.weekly_kg} kg` : '-'} />
         <Stat label="平均單票成本" value={scenario.results?.avg_cost_per_ticket ? `${scenario.results.avg_cost_per_ticket.toFixed(2)} HKD` : '-'} />
-        <Stat label="B段泡比" value={scenario.b_bubble_rate?.toString() ?? '-'} />
+        <Stat label="BC泡比" value={scenario.bc_bubble_ratio?.toString() ?? '-'} />
       </div>
 
       {costs && costs.length > 0 && (
@@ -511,60 +467,71 @@ function ScenarioDetails({ scenario }: { scenario: Scenario }) {
         <p className="text-xs font-medium text-muted-foreground mb-2">供應商配置</p>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <KV k="A段" v={scenario.vendor_a_id} />
-          <KV k="B段" v={scenario.vendor_b_id} />
-          <KV k="C段" v={scenario.vendor_c_id} />
+          <KV k="BC段" v={scenario.vendor_bc_id} />
           <KV k="D段" v={scenario.vendor_d_id} />
-          {scenario.vendor_bc_id && <KV k="BC段" v={scenario.vendor_bc_id} />}
-          {scenario.vendor_bcd_id && <KV k="BCD段" v={scenario.vendor_bcd_id} />}
-          {scenario.vendor_b2_id && <KV k="B2段" v={scenario.vendor_b2_id} />}
         </div>
       </div>
     </div>
   )
 }
 
-function RateCardDetails({ card }: { card: RateCardRow }) {
-  const avgMargin = useMemo(() => {
-    if (!card.brackets?.length) return 0
-    return card.brackets.reduce((sum, b) => sum + b.actual_margin, 0) / card.brackets.length
-  }, [card.brackets])
+function RateCardDetails({ card }: { card: GlobalRateCard & { country_brackets: RateCardCountryBracket[] } }) {
+  const [expandedCountry, setExpandedCountry] = useState<string | null>(null)
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <Stat label="段數" value={card.brackets.length.toString()} />
-        <Stat label="平均毛利" value={`${(avgMargin * 100).toFixed(1)}%`} valueClass={getMarginColorClass(avgMargin)} />
-        <Stat label="國家" value={`${getCountryFlag(card.country_code)} ${card.country_code}`} />
-        <Stat label="建立時間" value={card.created_at ? new Date(card.created_at).toLocaleDateString() : '-'} />
+        <Stat label="來源" value={card.source} />
+        <Stat label="幣別" value={card.currency} />
+        <Stat label="涵蓋國家" value={`${card.country_brackets.length} 個`} />
+        <Stat label="燃油附加費" value={`${((card.fuel_surcharge_pct ?? 0) * 100).toFixed(1)}%`} />
       </div>
 
-      <div className="border rounded-md overflow-auto max-h-96">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>重量段</TableHead>
-              <TableHead className="text-right">成本</TableHead>
-              <TableHead className="text-right">運費 /kg</TableHead>
-              <TableHead className="text-right">掛號費</TableHead>
-              <TableHead className="text-right">報價</TableHead>
-              <TableHead className="text-right">毛利</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {card.brackets.map((b) => (
-              <TableRow key={b.weight_range}>
-                <TableCell className="font-mono text-xs">{b.weight_range}</TableCell>
-                <TableCell className="text-right font-mono text-xs">{b.cost_hkd.toFixed(2)}</TableCell>
-                <TableCell className="text-right font-mono text-xs">{b.freight_rate_hkd_per_kg.toFixed(1)}</TableCell>
-                <TableCell className="text-right font-mono text-xs">{b.reg_fee_hkd.toFixed(0)}</TableCell>
-                <TableCell className="text-right font-mono text-xs">{b.revenue_hkd.toFixed(2)}</TableCell>
-                <TableCell className={`text-right font-mono text-xs ${getMarginColorClass(b.actual_margin)}`}>
-                  {(b.actual_margin * 100).toFixed(1)}%
-                </TableCell>
+      <div>
+        <p className="text-xs font-medium text-muted-foreground mb-2">國家 / 地區價格</p>
+        <div className="border rounded-md overflow-auto max-h-96">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>國家</TableHead>
+                <TableHead className="text-right">重量段數</TableHead>
+                <TableHead className="text-right">展開</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {card.country_brackets.map((cb) => (
+                <>
+                  <TableRow
+                    key={cb.country_code}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setExpandedCountry(expandedCountry === cb.country_code ? null : cb.country_code)}
+                  >
+                    <TableCell className="font-medium text-sm">
+                      {cb.country_name_zh || cb.country_name_en}
+                      <span className="ml-1.5 font-mono text-xs text-muted-foreground">{cb.country_code}</span>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs">{cb.brackets.length}</TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">
+                      {expandedCountry === cb.country_code ? '▲' : '▼'}
+                    </TableCell>
+                  </TableRow>
+                  {expandedCountry === cb.country_code && cb.brackets.map((b, i) => (
+                    <TableRow key={i} className="bg-muted/20">
+                      <TableCell colSpan={3} className="py-1 px-4">
+                        <div className="grid grid-cols-4 text-xs font-mono gap-2">
+                          <span>{b.weight_min}–{b.weight_max} kg</span>
+                          <span>費率 {b.rate_per_kg}/kg</span>
+                          <span>掛號 {b.reg_fee}</span>
+                          {b.cost_hkd != null && <span className="text-muted-foreground">成本 {b.cost_hkd} HKD</span>}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   )

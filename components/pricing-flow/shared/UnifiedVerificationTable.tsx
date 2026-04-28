@@ -76,8 +76,6 @@ interface CellData {
   segC?: number
   segD?: number
   segBC?: number
-  segB2?: number
-  segB2C?: number
 }
 
 // ─── Helpers to compute cost at a specific weight from scenario costs ──────
@@ -85,7 +83,7 @@ interface CellData {
 export function computeScenarioCostAtWeight(
   weightKg: number,
   costs: BracketCost[],
-): { cost: number; segA: number; segB: number; segC: number; segD: number; segBC: number; segB2: number; segB2C: number } {
+): { cost: number; segA: number; segB: number; segC: number; segD: number; segBC: number } {
   // Try exact match first
   const exact = costs.find(c => Math.abs(c.representative_weight_kg - weightKg) < 0.001)
   if (exact) {
@@ -96,14 +94,12 @@ export function computeScenarioCostAtWeight(
       segC: exact.seg_c,
       segD: exact.seg_d,
       segBC: exact.seg_bc ?? 0,
-      segB2: exact.seg_b2 ?? 0,
-      segB2C: exact.seg_b2c ?? 0,
     }
   }
 
   // Fallback: find matching bracket and interpolate
   const sc = costs.find(c => weightKg > c.weight_min_kg && weightKg <= c.weight_max_kg) ?? costs[0]
-  if (!sc) return { cost: 0, segA: 0, segB: 0, segC: 0, segD: 0, segBC: 0, segB2: 0, segB2C: 0 }
+  if (!sc) return { cost: 0, segA: 0, segB: 0, segC: 0, segD: 0, segBC: 0 }
 
   const detail = sc.detail
   const repW = sc.representative_weight_kg
@@ -143,28 +139,9 @@ export function computeScenarioCostAtWeight(
   let segBC = 0
   if (detail?.seg_bc) {
     const bc = detail.seg_bc
-    segBC = (bc.rate_per_kg * weightKg * (bc.bubble_ratio ?? 1) + bc.handling_fee) * bc.exchange_rate_to_hkd
+    segBC = bc.rate_per_kg * weightKg * (1 + (bc.fuel_surcharge_pct ?? 0) / 100) * bc.exchange_rate_to_hkd
   } else if ((sc.seg_bc ?? 0) > 0 && repW > 0) {
     segBC = (sc.seg_bc! / repW) * weightKg
-  }
-
-  // B2段
-  let segB2 = 0
-  if (detail?.seg_b2 && detail.seg_b2.gateways.length > 0) {
-    for (const gw of detail.seg_b2.gateways) {
-      segB2 += (gw.rate_per_kg * weightKg * gw.bubble_rate + gw.mawb_amortized) * gw.proportion
-    }
-  } else if ((sc.seg_b2 ?? 0) > 0 && repW > 0) {
-    segB2 = (sc.seg_b2! / repW) * weightKg
-  }
-
-  // B2C段
-  let segB2C = 0
-  if (detail?.seg_b2c) {
-    const b2c = detail.seg_b2c
-    segB2C = (b2c.rate_per_kg * weightKg * (b2c.bubble_ratio ?? 1) + b2c.handling_fee) * b2c.exchange_rate_to_hkd
-  } else if ((sc.seg_b2c ?? 0) > 0 && repW > 0) {
-    segB2C = (sc.seg_b2c! / repW) * weightKg
   }
 
   // D段
@@ -212,8 +189,8 @@ export function computeScenarioCostAtWeight(
     segD = (sc.seg_d / repW) * weightKg
   }
 
-  const cost = segA + segB + segC + segD + segBC + segB2 + segB2C
-  return { cost, segA, segB, segC, segD, segBC, segB2, segB2C }
+  const cost = segA + segB + segC + segD + segBC
+  return { cost, segA, segB, segC, segD, segBC }
 }
 
 function computeCellFromSource(source: DataSource, weightKg: number): CellData {
@@ -231,8 +208,6 @@ function computeCellFromSource(source: DataSource, weightKg: number): CellData {
       segC: r.segC,
       segD: r.segD,
       segBC: r.segBC,
-      segB2: r.segB2,
-      segB2C: r.segB2C,
     }
   }
 
@@ -308,17 +283,6 @@ function buildCellTooltip(
     } else if (pm === 'bc_combined') {
       rows.push(['A 攬收', cell.segA ?? 0])
       rows.push(['BC 空運+清關', cell.segBC ?? 0])
-      rows.push(['D 尾程', cell.segD ?? 0])
-    } else if (pm === 'multi_b') {
-      rows.push(['A 攬收', cell.segA ?? 0])
-      rows.push(['B1 空運', cell.segB ?? 0])
-      rows.push(['B2 空運', cell.segB2 ?? 0])
-      rows.push(['C 清關', cell.segC ?? 0])
-      rows.push(['D 尾程', cell.segD ?? 0])
-    } else if (pm === 'multi_b_b2c') {
-      rows.push(['A 攬收', cell.segA ?? 0])
-      rows.push(['B1 空運', cell.segB ?? 0])
-      rows.push(['B2C 空運+包清', cell.segB2C ?? 0])
       rows.push(['D 尾程', cell.segD ?? 0])
     } else {
       rows.push(['A 攬收', cell.segA ?? 0])
@@ -640,8 +604,6 @@ export function UnifiedVerificationTable({
                       seg_c: cell.segC,
                       seg_d: cell.segD,
                       seg_bc: cell.segBC,
-                      seg_b2: cell.segB2,
-                      seg_b2c: cell.segB2C,
                     }
                     const bad = new Set(invalidSegments(costs, pm))
                     const valid = isCostValid(costs, pm)
@@ -654,11 +616,7 @@ export function UnifiedVerificationTable({
                       ? <>{seg('seg_a', 'A', cell.segA!)} {seg('seg_d', 'BCD', cell.segD!)}</>
                       : pm === 'bc_combined'
                         ? <>{seg('seg_a', 'A', cell.segA!)} {seg('seg_bc', 'BC', cell.segBC!)} {seg('seg_d', 'D', cell.segD!)}</>
-                        : pm === 'multi_b'
-                          ? <>{seg('seg_a', 'A', cell.segA!)} {seg('seg_b', 'B1', cell.segB!)} {seg('seg_b2', 'B2', cell.segB2!)} {seg('seg_c', 'C', cell.segC!)} {seg('seg_d', 'D', cell.segD!)}</>
-                          : pm === 'multi_b_b2c'
-                            ? <>{seg('seg_a', 'A', cell.segA!)} {seg('seg_b', 'B1', cell.segB!)} {seg('seg_b2c', 'B2C', cell.segB2C!)} {seg('seg_d', 'D', cell.segD!)}</>
-                            : <>{seg('seg_a', 'A', cell.segA!)} {seg('seg_b', 'B', cell.segB!)} {seg('seg_c', 'C', cell.segC!)} {seg('seg_d', 'D', cell.segD!)}</>
+                        : <>{seg('seg_a', 'A', cell.segA!)} {seg('seg_b', 'B', cell.segB!)} {seg('seg_c', 'C', cell.segC!)} {seg('seg_d', 'D', cell.segD!)}</>
                     return (
                       <>
                         <td key={`${src.id}-${w}-bd`} className={`px-2 py-1.5 text-center font-mono text-[10px] text-muted-foreground ${bgClass}`}>
@@ -690,8 +648,6 @@ export function UnifiedVerificationTable({
                         seg_c: cell.segC,
                         seg_d: cell.segD,
                         seg_bc: cell.segBC,
-                        seg_b2: cell.segB2,
-                        seg_b2c: cell.segB2C,
                       },
                       pm,
                     )

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { WEIGHT_BRACKETS } from '@/types'
 
 /**
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         })()
       : WEIGHT_BRACKETS.map((b) => ({ range: b.range, min: b.min, max: b.max }))
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Build date filter for the period
     let dateFilter: string | null = null

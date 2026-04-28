@@ -12,20 +12,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { VolumeCurveChart } from '@/components/scenarios/VolumeCurveChart'
 import { ScenarioCostVerificationTable } from '@/components/scenarios/ScenarioCostVerificationTable'
 import { useT } from '@/lib/i18n'
 import type { ScenarioResults, BracketCost, BracketDetail } from '@/types/scenario'
-import type { VolumeCurveData } from '@/lib/calculations/volume'
 
-interface ExtendedResults extends ScenarioResults {
-  volume_curve?: VolumeCurveData
-}
-
-type PricingMode = 'segmented' | 'bc_combined' | 'bcd_combined' | 'multi_b' | 'multi_b_b2c'
+type PricingMode = 'segmented' | 'bc_combined' | 'bcd_combined'
 
 interface ResultsPanelProps {
-  results: ExtendedResults | null
+  results: ScenarioResults | null
   loading: boolean
   weeklyTickets?: number
   isPreview?: boolean
@@ -42,7 +36,7 @@ function AssumptionsBanner({
   results,
   weeklyTickets,
 }: {
-  results: ExtendedResults
+  results: ScenarioResults
   weeklyTickets: number
 }) {
   const t = useT()
@@ -51,7 +45,6 @@ function AssumptionsBanner({
 
   const avgWeight = assumptions?.avg_weight_kg
   const isDefaultWeight = avgWeight === 1.2
-  const bubbleRate = assumptions?.bubble_rate
   const gatewayMode = assumptions?.gateway_mode
   const exchangeRates = assumptions?.exchange_rates
 
@@ -75,9 +68,6 @@ function AssumptionsBanner({
           warningText={t.resultsPanel.defaultWeightWarning}
         />
         <Pill label={t.resultsPanel.gatewayAllocation} value={gatewayLabel || '—'} />
-        {bubbleRate != null && (
-          <Pill label={t.resultsPanel.bubbleRate} value={`${bubbleRate}`} />
-        )}
         {tierEntries.map(([gw, info]) => (
           <Pill
             key={gw}
@@ -286,9 +276,7 @@ function FixedFeeTooltip({ brackets }: { brackets: BracketCost[] }) {
 
 function ExpandedDetail({ detail, repWeight, segBTotal = 0, segCTotal = 0, segDTotal = 0 }: { detail: BracketDetail; repWeight: number; segBTotal?: number; segCTotal?: number; segDTotal?: number }) {
   const t = useT()
-  const hasBC = !!detail.seg_bc && !detail.seg_b2 && !detail.seg_b2c
-  const hasB2 = !!detail.seg_b2
-  const hasB2C = !!detail.seg_b2c
+  const hasBC = !!detail.seg_bc
 
   // Helper for B-segment gateway detail (reused for B1 and B2)
   function BSegmentDetail({ gateways, label, colorBorder, colorBg, colorTitle, colorAccent }: {
@@ -335,10 +323,7 @@ function ExpandedDetail({ detail, repWeight, segBTotal = 0, segCTotal = 0, segDT
   }
 
   // Determine grid columns
-  const gridCols = hasBC ? 'sm:grid-cols-2'
-    : hasB2 ? 'sm:grid-cols-2 lg:grid-cols-5'
-    : hasB2C ? 'sm:grid-cols-2 lg:grid-cols-4'
-    : 'sm:grid-cols-2 lg:grid-cols-4'
+  const gridCols = hasBC ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-4'
 
   return (
     <div className={`grid grid-cols-1 ${gridCols} gap-3 p-3`}>
@@ -382,8 +367,8 @@ function ExpandedDetail({ detail, repWeight, segBTotal = 0, segCTotal = 0, segDT
           <p className="text-xs font-semibold text-teal-700 mb-2">{t.resultsPanel.segBCAirCustoms}</p>
           <div className="space-y-1 text-xs">
             <DetailRow label={t.resultsPanel.detailRatePerKg} value={`${fmt(detail.seg_bc!.rate_per_kg)} ${detail.seg_bc!.currency}`} />
-            {detail.seg_bc!.handling_fee > 0 && (
-              <DetailRow label={t.resultsPanel.detailHandlingFee} value={`${fmt(detail.seg_bc!.handling_fee)} ${detail.seg_bc!.currency}`} />
+            {(detail.seg_bc!.fuel_surcharge_pct ?? 0) > 0 && (
+              <DetailRow label="燃油附加費" value={`${detail.seg_bc!.fuel_surcharge_pct}%`} />
             )}
             <DetailRow label={t.resultsPanel.detailWeight} value={`${fmt(detail.seg_bc!.weight_kg, 3)} kg`} />
             <DetailRow label={t.resultsPanel.detailOrigCurrCost} value={`${fmt(detail.seg_bc!.cost_in_currency)} ${detail.seg_bc!.currency}`} />
@@ -399,96 +384,6 @@ function ExpandedDetail({ detail, repWeight, segBTotal = 0, segCTotal = 0, segDT
             </div>
           </div>
         </div>
-      ) : hasB2 ? (
-        <>
-          {/* B1段 */}
-          <BSegmentDetail
-            gateways={detail.seg_b.gateways}
-            label={t.resultsPanel.segB1Air}
-            colorBorder="border-blue-200"
-            colorBg="bg-blue-50"
-            colorTitle="text-blue-700"
-            colorAccent="text-blue-600"
-          />
-          {/* B2段 */}
-          <BSegmentDetail
-            gateways={detail.seg_b2!.gateways}
-            label={t.resultsPanel.segB2Air}
-            colorBorder="border-sky-200"
-            colorBg="bg-sky-50"
-            colorTitle="text-sky-700"
-            colorAccent="text-sky-600"
-          />
-          {/* C段 */}
-          <div className="rounded-lg border-2 border-purple-200 bg-purple-50 p-3">
-            <p className="text-xs font-semibold text-purple-700 mb-2">{t.resultsPanel.segCCustoms}</p>
-            <div className="space-y-2 text-xs">
-              {detail.seg_c.gateways.length > 0 ? (
-                detail.seg_c.gateways.map((gw) => (
-                  <div key={gw.gateway} className="space-y-1">
-                    <p className="font-medium text-purple-600">
-                      {gw.gateway} ({Math.round(gw.proportion * 100)}%)
-                    </p>
-                    <DetailRow label={t.resultsPanel.detailMawbAmort} value={`${fmt(gw.mawb_amortized)} HKD`} />
-                    <DetailRow label={t.resultsPanel.detailPerKgFee} value={`${fmt(gw.per_kg_cost)} HKD`} />
-                    <DetailRow label={t.resultsPanel.detailPerHawbFee} value={`${fmt(gw.per_hawb_cost)} HKD`} />
-                    <div className="border-t border-purple-200 pt-1">
-                      <DetailRow label={t.resultsPanel.detailSubtotal} value={`${fmt(gw.subtotal)} HKD`} bold />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="space-y-1">
-                  <p className="text-muted-foreground">{t.resultsPanel.noGatewayDetail}</p>
-                  <div className="border-t border-purple-200 pt-1 mt-1">
-                    <DetailRow label={t.resultsPanel.detailSubtotal} value={`${fmt(segCTotal)} HKD`} bold />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          {/* D段 */}
-          <DSegmentPanel detail={detail} repWeight={repWeight} segDTotal={segDTotal} />
-        </>
-      ) : hasB2C ? (
-        <>
-          {/* B1段 */}
-          <BSegmentDetail
-            gateways={detail.seg_b.gateways}
-            label={t.resultsPanel.segB1Air}
-            colorBorder="border-blue-200"
-            colorBg="bg-blue-50"
-            colorTitle="text-blue-700"
-            colorAccent="text-blue-600"
-          />
-          {/* B2C段 */}
-          <div className="rounded-lg border-2 border-teal-200 bg-teal-50 p-3">
-            <p className="text-xs font-semibold text-teal-700 mb-2">{t.resultsPanel.segB2CAirCustoms}</p>
-            <div className="space-y-1 text-xs">
-              {detail.seg_b2c!.vendor_name && (
-                <DetailRow label={t.resultsPanel.detailVendor} value={detail.seg_b2c!.vendor_name} />
-              )}
-              <DetailRow label={t.resultsPanel.detailRatePerKg} value={`${fmt(detail.seg_b2c!.rate_per_kg)} ${detail.seg_b2c!.currency}`} />
-              {detail.seg_b2c!.handling_fee > 0 && (
-                <DetailRow label={t.resultsPanel.detailHandlingFee} value={`${fmt(detail.seg_b2c!.handling_fee)} ${detail.seg_b2c!.currency}`} />
-              )}
-              <DetailRow label={t.resultsPanel.detailWeight} value={`${fmt(detail.seg_b2c!.weight_kg, 3)} kg`} />
-              <DetailRow label={t.resultsPanel.detailOrigCurrCost} value={`${fmt(detail.seg_b2c!.cost_in_currency)} ${detail.seg_b2c!.currency}`} />
-              {detail.seg_b2c!.currency !== 'HKD' && (
-                <DetailRow label={t.resultsPanel.detailExRateToHkd} value={`${fmt(detail.seg_b2c!.exchange_rate_to_hkd, 4)}`} />
-              )}
-              <div className="border-t border-teal-200 pt-1 mt-1">
-                <DetailRow
-                  label={t.resultsPanel.detailSubtotal}
-                  value={`${fmt(detail.seg_b2c!.cost_in_currency * detail.seg_b2c!.exchange_rate_to_hkd)} HKD`}
-                  bold
-                />
-              </div>
-            </div>
-          </div>
-          {/* D段 */}
-          <DSegmentPanel detail={detail} repWeight={repWeight} segDTotal={segDTotal} />
-        </>
       ) : (
         <>
           {/* B段 */}
@@ -605,27 +500,11 @@ function SegmentBar({
 }) {
   const t = useT()
   const total = bracket.cost_hkd || 1
-  const isBCCombined = bracket.seg_bc != null && (bracket.seg_b2 ?? 0) === 0 && (bracket.seg_b2c ?? 0) === 0
-  const isMultiB_ = (bracket.seg_b2 ?? 0) > 0
-  const isMultiBB2C_ = (bracket.seg_b2c ?? 0) > 0
+  const isBCCombined = bracket.seg_bc != null
   const segments = isBCCombined
     ? [
         { key: 'a', label: t.resultsPanel.segAPickup, value: bracket.seg_a, color: 'bg-blue-400', pct: (bracket.seg_a / total) * 100 },
         { key: 'bc', label: t.resultsPanel.segBCAirCustoms, value: bracket.seg_bc!, color: 'bg-teal-400', pct: ((bracket.seg_bc ?? 0) / total) * 100 },
-      ]
-    : isMultiB_
-    ? [
-        { key: 'a', label: t.resultsPanel.segAPickup, value: bracket.seg_a, color: 'bg-blue-400', pct: (bracket.seg_a / total) * 100 },
-        { key: 'b1', label: t.resultsPanel.segB1Air, value: bracket.seg_b, color: 'bg-blue-600', pct: (bracket.seg_b / total) * 100 },
-        { key: 'b2', label: t.resultsPanel.segB2Air, value: bracket.seg_b2!, color: 'bg-sky-400', pct: ((bracket.seg_b2 ?? 0) / total) * 100 },
-        { key: 'c', label: t.resultsPanel.segCCustoms, value: bracket.seg_c, color: 'bg-purple-400', pct: (bracket.seg_c / total) * 100 },
-        { key: 'd', label: t.resultsPanel.segDLastMile, value: bracket.seg_d, color: 'bg-green-400', pct: (bracket.seg_d / total) * 100 },
-      ]
-    : isMultiBB2C_
-    ? [
-        { key: 'a', label: t.resultsPanel.segAPickup, value: bracket.seg_a, color: 'bg-blue-400', pct: (bracket.seg_a / total) * 100 },
-        { key: 'b1', label: t.resultsPanel.segB1Air, value: bracket.seg_b, color: 'bg-blue-600', pct: (bracket.seg_b / total) * 100 },
-        { key: 'b2c', label: t.resultsPanel.segB2CAirCustoms, value: bracket.seg_b2c!, color: 'bg-teal-400', pct: ((bracket.seg_b2c ?? 0) / total) * 100 },
         { key: 'd', label: t.resultsPanel.segDLastMile, value: bracket.seg_d, color: 'bg-green-400', pct: (bracket.seg_d / total) * 100 },
       ]
     : [
@@ -672,10 +551,6 @@ export function ResultsPanel({ results, loading, weeklyTickets = 7000, isPreview
   const isBCCombined = pricingMode === 'bc_combined'
     || (!pricingMode && (results?.cost_per_bracket?.some((b) => b.seg_bc != null) ?? false))
   const isBCDCombined = pricingMode === 'bcd_combined'
-  const isMultiB = pricingMode === 'multi_b'
-    || (!pricingMode && (results?.cost_per_bracket?.some((b) => b.detail?.seg_b2 != null) ?? false))
-  const isMultiBB2C = pricingMode === 'multi_b_b2c'
-    || (!pricingMode && (results?.cost_per_bracket?.some((b) => b.detail?.seg_b2c != null) ?? false))
 
   if (loading) {
     return (
@@ -732,240 +607,16 @@ export function ResultsPanel({ results, loading, weeklyTickets = 7000, isPreview
       <AssumptionsBanner results={results} weeklyTickets={weeklyTickets} />
 
       {/* Cost Verification Table (24 weight points) */}
-      {(results as ExtendedResults & { verification_costs?: BracketCost[] }).verification_costs && (
+      {(results as ScenarioResults & { verification_costs?: BracketCost[] }).verification_costs && (
         <Card>
           <CardContent className="pt-4">
-            <ScenarioCostVerificationTable costs={(results as ExtendedResults & { verification_costs?: BracketCost[] }).verification_costs!} pricingMode={pricingMode} />
+            <ScenarioCostVerificationTable costs={(results as ScenarioResults & { verification_costs?: BracketCost[] }).verification_costs!} pricingMode={pricingMode} />
           </CardContent>
         </Card>
       )}
 
-      {/* Legacy: 各重量區間成本明細 — hidden, kept for reference */}
-      {false && <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">{t.resultsPanel.costBreakdown}</CardTitle>
-            <div className="flex items-center gap-1 rounded-lg border bg-muted/50 p-0.5">
-              <Button
-                variant={displayMode === 'per_ticket' ? 'default' : 'ghost'}
-                size="xs"
-                onClick={() => setDisplayMode('per_ticket')}
-              >
-                {t.resultsPanel.perTicketUnit}
-              </Button>
-              <Button
-                variant={displayMode === 'per_kg' ? 'default' : 'ghost'}
-                size="xs"
-                onClick={() => setDisplayMode('per_kg')}
-              >
-                {t.resultsPanel.perKgUnit}
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead className="text-xs w-8"></TableHead>
-                  <TableHead className="text-xs">{t.resultsPanel.weightRange}</TableHead>
-                  {displayMode === 'per_kg' && (
-                    <TableHead className="text-xs text-center text-muted-foreground">{t.resultsPanel.repWeight}</TableHead>
-                  )}
-                  <TableHead className="text-xs text-center">
-                    {t.resultsPanel.segAPickup}
-                  </TableHead>
-                  {isBCDCombined ? (
-                    <TableHead className="text-xs text-center">
-                      {t.segments.bcdFull}
-                    </TableHead>
-                  ) : isBCCombined ? (
-                    <>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segBCAirCustoms}
-                      </TableHead>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segDLastMile}
-                      </TableHead>
-                    </>
-                  ) : isMultiB ? (
-                    <>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segB1Air}
-                      </TableHead>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segB2Air}
-                      </TableHead>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segCCustoms}
-                      </TableHead>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segDLastMile}
-                      </TableHead>
-                    </>
-                  ) : isMultiBB2C ? (
-                    <>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segB1Air}
-                      </TableHead>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segB2CAirCustoms}
-                      </TableHead>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segDLastMile}
-                      </TableHead>
-                    </>
-                  ) : (
-                    <>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segBAir}
-                      </TableHead>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segCCustoms}
-                      </TableHead>
-                      <TableHead className="text-xs text-center">
-                        {t.resultsPanel.segDLastMile}
-                      </TableHead>
-                    </>
-                  )}
-                  <TableHead className="text-xs text-center font-semibold">
-                    {displayMode === 'per_kg' ? t.resultsPanel.totalPerKg : t.resultsPanel.totalCostLabel}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cost_per_bracket.map((b) => {
-                  const isExpanded = expandedRows.has(b.weight_range)
-                  const hasDetail = !!b.detail
-                  const rw = b.representative_weight_kg
 
-                  return (
-                    <TableRow
-                      key={b.weight_range}
-                      className="group/row"
-                    >
-                      <TableCell colSpan={
-                        isBCDCombined ? (displayMode === 'per_kg' ? 6 : 5)
-                        : isBCCombined ? (displayMode === 'per_kg' ? 7 : 6)
-                        : isMultiB ? (displayMode === 'per_kg' ? 9 : 8)
-                        : isMultiBB2C ? (displayMode === 'per_kg' ? 8 : 7)
-                        : (displayMode === 'per_kg' ? 8 : 7)
-                      } className="p-0">
-                        {/* Main row */}
-                        <div
-                          className={`flex items-center ${hasDetail ? 'cursor-pointer hover:bg-muted/30' : ''}`}
-                          onClick={() => hasDetail && toggleRow(b.weight_range)}
-                        >
-                          <div className="w-8 flex items-center justify-center text-xs text-muted-foreground px-2 py-2">
-                            {hasDetail ? (isExpanded ? '▼' : '▶') : ''}
-                          </div>
-                          <div className="flex-1 grid items-center py-2 pr-3" style={{
-                            gridTemplateColumns: isBCDCombined
-                              ? (displayMode === 'per_kg' ? '1fr 0.7fr repeat(2, 1fr) 1fr' : '1fr repeat(2, 1fr) 1fr')
-                              : isBCCombined
-                              ? (displayMode === 'per_kg' ? '1fr 0.7fr repeat(3, 1fr) 1fr' : '1fr repeat(3, 1fr) 1fr')
-                              : isMultiB
-                              ? (displayMode === 'per_kg' ? '1fr 0.7fr repeat(5, 1fr) 1fr' : '1fr repeat(5, 1fr) 1fr')
-                              : isMultiBB2C
-                              ? (displayMode === 'per_kg' ? '1fr 0.7fr repeat(3, 1fr) 1fr' : '1fr repeat(3, 1fr) 1fr')
-                              : (displayMode === 'per_kg' ? '1fr 0.7fr repeat(4, 1fr) 1fr' : '1fr repeat(4, 1fr) 1fr'),
-                          }}>
-                            <span className="text-xs font-medium">{b.weight_range}</span>
-                            {displayMode === 'per_kg' && (
-                              <span className="text-xs text-center text-muted-foreground font-mono">
-                                {fmt(rw, 3)} kg
-                              </span>
-                            )}
-                            <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_a, rw))}</span>
-                            {isBCDCombined ? (
-                              <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_d, rw))}</span>
-                            ) : isBCCombined ? (
-                              <>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_bc ?? 0, rw))}</span>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_d, rw))}</span>
-                              </>
-                            ) : isMultiB ? (
-                              <>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_b, rw))}</span>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_b2 ?? 0, rw))}</span>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_c, rw))}</span>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_d, rw))}</span>
-                              </>
-                            ) : isMultiBB2C ? (
-                              <>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_b, rw))}</span>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_b2c ?? 0, rw))}</span>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_d, rw))}</span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_b, rw))}</span>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_c, rw))}</span>
-                                <span className="text-xs text-center font-mono">{fmt(getCostValue(b.seg_d, rw))}</span>
-                              </>
-                            )}
-                            <span className="text-xs text-center font-mono font-semibold">
-                              {fmt(getCostValue(b.cost_hkd, rw))}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Expanded detail panel */}
-                        {isExpanded && b.detail && (
-                          <div className="border-t bg-muted/20">
-                            <ExpandedDetail detail={b.detail} repWeight={rw} segBTotal={getCostValue(b.seg_b, rw)} segCTotal={getCostValue(b.seg_c, rw)} segDTotal={getCostValue(b.seg_d, rw)} />
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
-          {cost_per_bracket.some((b) => b.detail) && (
-            <p className="text-xs text-muted-foreground mt-2">
-              &#9432; {t.resultsPanel.expandHint}
-            </p>
-          )}
-        </CardContent>
-      </Card>}
-
-      {/* Volume Curve Chart — replacing segment proportion bar */}
-      {false && <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{t.resultsPanel.costStructure}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {cost_per_bracket.map((b) => (
-              <SegmentBar key={b.weight_range} bracket={b} />
-            ))}
-            <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-blue-400" /> {t.resultsPanel.segAPickup}
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-orange-400" /> {t.resultsPanel.segBAir}
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-purple-400" /> {t.resultsPanel.segCCustoms}
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-green-400" /> {t.resultsPanel.segDLastMile}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>}
-
-      {/* Volume Curve Chart — kept as-is */}
-      {results.volume_curve && (
-        <VolumeCurveChart data={results.volume_curve} currentTickets={weeklyTickets} />
-      )}
-
-      {/* Volume Analysis Tier Breakpoints — kept as-is */}
+      {/* Volume Analysis Tier Breakpoints */}
       {volume_analysis.tier_breakpoints.length > 0 && (
         <Card>
           <CardHeader className="pb-2">

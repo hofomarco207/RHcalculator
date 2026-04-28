@@ -14,8 +14,6 @@ import {
   scenarioSegCTooltip,
   scenarioSegBCTooltip,
   scenarioSegDTooltip,
-  scenarioSegB2Tooltip,
-  scenarioSegB2CTooltip,
 } from '@/components/rate-card/CostTooltip'
 import { getVerdict } from '@/types/pricing-analysis'
 import { getMarginColorClass } from '@/lib/utils/margin'
@@ -30,7 +28,7 @@ interface CompeteStep4Props {
   competitorPrices: CompetitorBracketPrice[]
   adjustmentPct: number
   scenarioId: string
-  pricingMode: 'segmented' | 'bc_combined' | 'bcd_combined' | 'multi_b' | 'multi_b_b2c'
+  pricingMode: 'segmented' | 'bc_combined' | 'bcd_combined'
   weightedMargin: number | null
   noRegFee: boolean
   weightStep: number
@@ -60,8 +58,6 @@ interface FullVerificationRow {
   segC: number
   segD: number
   segBC: number
-  segB2: number
-  segB2C: number
   detail: BracketDetail | null
 }
 
@@ -204,8 +200,6 @@ export function CompeteStep4({
         segC: cost.seg_c,
         segD: cost.seg_d,
         segBC: cost.seg_bc ?? 0,
-        segB2: cost.seg_b2 ?? 0,
-        segB2C: cost.seg_b2c ?? 0,
         detail: cost.detail ?? null,
       }
     }).filter((r): r is FullVerificationRow => r !== null)
@@ -215,8 +209,6 @@ export function CompeteStep4({
   const cur = displayCurrency || 'HKD'
   const isBCDCombined = pricingMode === 'bcd_combined'
   const isBCCombined = pricingMode === 'bc_combined'
-  const isMultiB = pricingMode === 'multi_b'
-  const isMultiBB2C = pricingMode === 'multi_b_b2c'
   const totalPages = Math.ceil(fullVerificationRows.length / PAGE_SIZE)
   const displayVerificationRows = showAll
     ? fullVerificationRows
@@ -336,19 +328,6 @@ export function CompeteStep4({
                       <th className="px-3 py-2.5 text-center font-medium text-teal-500 whitespace-nowrap">{t.segments.bc}</th>
                       <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">{t.segments.d}</th>
                     </>
-                  ) : isMultiB ? (
-                    <>
-                      <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">{t.segments.b1}</th>
-                      <th className="px-3 py-2.5 text-center font-medium text-sky-500 whitespace-nowrap">{t.segments.b2}</th>
-                      <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">{t.segments.c}</th>
-                      <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">{t.segments.d}</th>
-                    </>
-                  ) : isMultiBB2C ? (
-                    <>
-                      <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">{t.segments.b1}</th>
-                      <th className="px-3 py-2.5 text-center font-medium text-teal-500 whitespace-nowrap">{t.segments.b2c}</th>
-                      <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">{t.segments.d}</th>
-                    </>
                   ) : (
                     <>
                       <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">{t.segments.b}</th>
@@ -403,68 +382,6 @@ export function CompeteStep4({
                             : <><span className="text-teal-400 font-semibold">{t.segments.bcFull}</span>{'\n'}<span className="text-amber-400">= {(row.segBC * mul).toFixed(2)} {cur}</span></>
                           }>
                             <span className="cursor-help border-b border-dotted border-muted-foreground/40">{(row.segBC * mul).toFixed(2)}</span>
-                          </CostTooltip>
-                        </td>
-                        <td className="px-3 py-1.5 text-center font-mono text-xs">
-                          <CostTooltip content={row.detail
-                            ? scenarioSegDTooltip(row.detail.seg_d, row.segD, mul, cur)
-                            : <><span className="text-blue-400 font-semibold">{t.segments.dFull}</span>{'\n'}<span className="text-amber-400">= {(row.segD * mul).toFixed(2)} {cur}</span></>
-                          }>
-                            <span className="cursor-help border-b border-dotted border-muted-foreground/40">{(row.segD * mul).toFixed(2)}</span>
-                          </CostTooltip>
-                        </td>
-                      </>
-                    ) : isMultiB ? (
-                      <>
-                        <td className="px-3 py-1.5 text-center font-mono text-xs">
-                          <CostTooltip content={row.detail
-                            ? scenarioSegBTooltip(row.detail.seg_b, row.segB, `${t.segments.b1} ${t.segments.bDesc}`, mul, cur)
-                            : <><span className="text-blue-400 font-semibold">{t.segments.b1} {t.segments.bDesc}</span>{'\n'}<span className="text-amber-400">= {(row.segB * mul).toFixed(2)} {cur}</span></>
-                          }>
-                            <span className="cursor-help border-b border-dotted border-muted-foreground/40">{(row.segB * mul).toFixed(2)}</span>
-                          </CostTooltip>
-                        </td>
-                        <td className="px-3 py-1.5 text-center font-mono text-xs">
-                          <CostTooltip content={row.detail?.seg_b2
-                            ? scenarioSegB2Tooltip(row.detail.seg_b2, row.segB2, mul, cur)
-                            : <><span className="text-blue-400 font-semibold">{t.segments.b2} {t.segments.bDesc}</span>{'\n'}<span className="text-amber-400">= {(row.segB2 * mul).toFixed(2)} {cur}</span></>
-                          }>
-                            <span className="cursor-help border-b border-dotted border-muted-foreground/40">{(row.segB2 * mul).toFixed(2)}</span>
-                          </CostTooltip>
-                        </td>
-                        <td className="px-3 py-1.5 text-center font-mono text-xs">
-                          <CostTooltip content={row.detail
-                            ? scenarioSegCTooltip(row.detail.seg_c, row.segC, mul, cur)
-                            : <><span className="text-blue-400 font-semibold">{t.segments.cFull}</span>{'\n'}<span className="text-amber-400">= {(row.segC * mul).toFixed(2)} {cur}</span></>
-                          }>
-                            <span className="cursor-help border-b border-dotted border-muted-foreground/40">{(row.segC * mul).toFixed(2)}</span>
-                          </CostTooltip>
-                        </td>
-                        <td className="px-3 py-1.5 text-center font-mono text-xs">
-                          <CostTooltip content={row.detail
-                            ? scenarioSegDTooltip(row.detail.seg_d, row.segD, mul, cur)
-                            : <><span className="text-blue-400 font-semibold">{t.segments.dFull}</span>{'\n'}<span className="text-amber-400">= {(row.segD * mul).toFixed(2)} {cur}</span></>
-                          }>
-                            <span className="cursor-help border-b border-dotted border-muted-foreground/40">{(row.segD * mul).toFixed(2)}</span>
-                          </CostTooltip>
-                        </td>
-                      </>
-                    ) : isMultiBB2C ? (
-                      <>
-                        <td className="px-3 py-1.5 text-center font-mono text-xs">
-                          <CostTooltip content={row.detail
-                            ? scenarioSegBTooltip(row.detail.seg_b, row.segB, `${t.segments.b1} ${t.segments.bDesc}`, mul, cur)
-                            : <><span className="text-blue-400 font-semibold">{t.segments.b1} {t.segments.bDesc}</span>{'\n'}<span className="text-amber-400">= {(row.segB * mul).toFixed(2)} {cur}</span></>
-                          }>
-                            <span className="cursor-help border-b border-dotted border-muted-foreground/40">{(row.segB * mul).toFixed(2)}</span>
-                          </CostTooltip>
-                        </td>
-                        <td className="px-3 py-1.5 text-center font-mono text-xs">
-                          <CostTooltip content={row.detail?.seg_b2c
-                            ? scenarioSegB2CTooltip(row.detail.seg_b2c, row.segB2C, mul, cur)
-                            : <><span className="text-teal-400 font-semibold">{t.segments.b2c} {t.segments.bcDesc}</span>{'\n'}<span className="text-amber-400">= {(row.segB2C * mul).toFixed(2)} {cur}</span></>
-                          }>
-                            <span className="cursor-help border-b border-dotted border-muted-foreground/40">{(row.segB2C * mul).toFixed(2)}</span>
                           </CostTooltip>
                         </td>
                         <td className="px-3 py-1.5 text-center font-mono text-xs">

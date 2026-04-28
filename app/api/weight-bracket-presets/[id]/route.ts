@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 /** PATCH — update preset name, brackets, or is_default */
 export async function PATCH(
@@ -11,7 +11,7 @@ export async function PATCH(
     const body = await request.json()
     const { name, brackets, is_default } = body
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // If marking as default, unset previous default for the same country
     if (is_default) {
@@ -56,7 +56,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { error } = await supabase
       .from('weight_bracket_presets')
       .delete()

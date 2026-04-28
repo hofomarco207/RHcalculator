@@ -8,6 +8,7 @@ import type { ExchangeRates } from '@/types'
 const RATE_FIELDS: Array<{ field: keyof ExchangeRates; label: string; hint: string }> = [
   { field: 'usd_hkd', label: 'USD/HKD', hint: '1 USD = ? HKD' },
   { field: 'hkd_rmb', label: 'HKD/RMB', hint: '1 HKD = ? RMB' },
+  { field: 'twd_hkd', label: 'TWD/HKD', hint: '1 TWD = ? HKD' },
   { field: 'jpy_hkd', label: 'JPY/HKD', hint: '1 JPY = ? HKD' },
 ]
 

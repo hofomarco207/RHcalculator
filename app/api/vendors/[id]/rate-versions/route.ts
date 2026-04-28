@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 /**
  * GET /api/vendors/[id]/rate-versions?table=vendor_b_rates
@@ -25,7 +25,7 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid table' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Get all records for this vendor, grouped by version
     const { data, error } = await supabase

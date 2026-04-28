@@ -10,24 +10,22 @@ import { SCENARIO_VERIFICATION_WEIGHTS } from '@/types'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { weights, ...scenarioBody } = body
+    const { weights, country_code, ...scenarioBody } = body
     const sc = scenarioBody as Scenario
     const customWeights = Array.isArray(weights) ? weights : undefined
+    const countryCode = typeof country_code === 'string' ? country_code : ''
 
     const data = await loadScenarioComputeData(sc)
 
-    if (data.pricingMode === 'bc_combined' && !data.vendorBCRate) {
+    if (!data.vendorBCRate) {
       return NextResponse.json({ error: 'BC 供應商尚未設定費率' }, { status: 400 })
     }
-    if (data.pricingMode === 'segmented' && data.vendorBRates.length === 0 && !sc.vendor_b_id) {
-      return NextResponse.json({ error: '請選擇 B段供應商' }, { status: 400 })
-    }
 
-    const results = computeAtWeights(data, customWeights)
+    const results = computeAtWeights(data, customWeights, countryCode)
 
     // Also compute verification costs at 24 weight points (unless custom weights were provided)
     if (!customWeights) {
-      const verificationResults = computeAtWeights(data, SCENARIO_VERIFICATION_WEIGHTS)
+      const verificationResults = computeAtWeights(data, SCENARIO_VERIFICATION_WEIGHTS, countryCode)
       return NextResponse.json({ ...results, verification_costs: verificationResults.cost_per_bracket })
     }
 

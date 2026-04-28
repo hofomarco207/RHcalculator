@@ -22,14 +22,13 @@ import {
 } from '@/components/ui/table'
 import { Label } from '@/components/ui/label'
 import { Loader2, Plus, X } from 'lucide-react'
-import { useCountry } from '@/lib/context/country-context'
 import { useT } from '@/lib/i18n'
 import { getMarginColorClass } from '@/lib/utils/margin'
 import { CostTooltip } from '@/components/rate-card/CostTooltip'
 import { MarginGauge } from './MarginGauge'
 import { getVerdict } from '@/types/pricing-analysis'
 import { DEFAULT_EXCHANGE_RATES, UNIFIED_WEIGHT_POINTS } from '@/types'
-import type { RateCard } from '@/types'
+import type { GlobalRateCard } from '@/types'
 import type { CompeteResult, CompetitorBracketPrice, CompetitorRateCard, SegmentBreakdown } from '@/types/pricing-analysis'
 
 type SideType = 'card' | 'scenario'
@@ -214,14 +213,24 @@ function costTooltipContent(breakdown: SegmentBreakdown, total: number, pricingM
   )
 }
 
-// ─── Unified card option (own + competitor) ───────────────────────────────
+// ─── Unified card option (own + competitor group) ─────────────────────────
 
 interface UnifiedCardOption {
-  id: string       // prefixed: "own:xxx" or "comp:xxx"
+  id: string       // prefixed: "own:xxx" or "comp-group:competitor||service"
   label: string
   source: 'own' | 'competitor'
   fscPct: number
   weightStep: number
+}
+
+interface CompetitorGroup {
+  key: string  // `${competitor_name}||${service_code}`
+  competitor_name: string
+  service_code: string
+  label: string
+  fscPct: number
+  weightStep: number
+  cardsByCountry: Map<string, CompetitorRateCard>
 }
 
 // ─── Component ────────────────────────────────────────────────────────────
@@ -230,7 +239,6 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
   const t = useT()
   const cur = displayCurrency
   const mul = currencyMultiplier
-  const { country } = useCountry()
 
   // Side types
   const [leftType, setLeftType] = useState<SideType>('card')
@@ -243,7 +251,7 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
   // Data sources
   const [scenarios, setScenarios] = useState<ScenarioOption[]>([])
   const [competitorCards, setCompetitorCards] = useState<CompetitorRateCard[]>([])
-  const [ownRateCards, setOwnRateCards] = useState<RateCard[]>([])
+  const [ownRateCards, setOwnRateCards] = useState<GlobalRateCard[]>([])
   const [loadingScenarios, setLoadingScenarios] = useState(false)
   const [loadingCards, setLoadingCards] = useState(false)
 
@@ -258,53 +266,104 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
   const [rightBaselineIdx, setRightBaselineIdx] = useState(0)
   const [computing, setComputing] = useState(false)
   const [error, setError] = useState('')
+  const [compareCountry, setCompareCountry] = useState('')
+
+  // ── Competitor groups (one per competitor_name × service_code) ───────
+
+  const competitorGroups = useMemo(() => {
+    const map = new Map<string, CompetitorGroup>()
+    for (const c of competitorCards) {
+      const key = `${c.competitor_name}||${c.service_code}`
+      const countryId = c.country_code ?? c.country_name_en ?? ''
+      if (!countryId) continue
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          competitor_name: c.competitor_name,
+          service_code: c.service_code,
+          label: (c.vendor_label as string | null | undefined)?.trim() || `${c.competitor_name} ${c.service_code}`,
+          fscPct: c.fuel_surcharge_pct ?? 0,
+          weightStep: c.weight_step ?? 0,
+          cardsByCountry: new Map(),
+        })
+      }
+      map.get(key)!.cardsByCountry.set(countryId, c)
+    }
+    return [...map.values()]
+  }, [competitorCards])
+
+  // ── All unique destination countries (from competitor cards) ─────────
+
+  const allCountryOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of competitorCards) {
+      const id = c.country_code ?? c.country_name_en ?? ''
+      if (!id) continue
+      map.set(id, c.country_name_zh?.trim() || c.country_name_en || id)
+    }
+    return [...map.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'zh-TW'))
+  }, [competitorCards])
+
+  // Auto-select a country when the list loads
+  useEffect(() => {
+    if (allCountryOptions.length > 0 && !compareCountry) {
+      const us = allCountryOptions.find(c => c.id === 'US' || c.label === '美國' || c.label.includes('美國'))
+      setCompareCountry(us?.id ?? allCountryOptions[0].id)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCountryOptions])
 
   // ── Unified card list ─────────────────────────────────────────────────
 
   const unifiedCards: UnifiedCardOption[] = useMemo(() => {
     const own: UnifiedCardOption[] = ownRateCards.map(c => ({
       id: `own:${c.id}`,
-      label: c.name,
+      label: c.product_name,
       source: 'own' as const,
       fscPct: 0,
-      weightStep: 0,
-    }))
-    const comp: UnifiedCardOption[] = competitorCards.map(c => ({
-      id: `comp:${c.id}`,
-      label: `${c.competitor_name} ${c.service_code}`,
-      source: 'competitor' as const,
-      fscPct: c.fuel_surcharge_pct ?? 0,
       weightStep: c.weight_step ?? 0,
     }))
+    const comp: UnifiedCardOption[] = competitorGroups.map(g => ({
+      id: `comp-group:${g.key}`,
+      label: g.label,
+      source: 'competitor' as const,
+      fscPct: g.fscPct,
+      weightStep: g.weightStep,
+    }))
     return [...own, ...comp]
-  }, [ownRateCards, competitorCards])
+  }, [ownRateCards, competitorGroups])
 
   // ── Fetchers ──────────────────────────────────────────────────────────
 
   const fetchScenarios = useCallback(async () => {
     setLoadingScenarios(true)
     try {
-      const res = await fetch(`/api/scenarios?country=${country}`)
+      const res = await fetch('/api/scenarios')
       if (res.ok) {
         const data = await res.json()
         setScenarios(data.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })))
       }
     } catch { /* non-fatal */ }
     setLoadingScenarios(false)
-  }, [country])
+  }, [])
 
   const fetchCards = useCallback(async () => {
     setLoadingCards(true)
+    // Fetch competitor cards and own rate cards independently so one failure doesn't
+    // silently block the other. No country_code filter — we want all current cards
+    // and let the user pick the destination country via compareCountry.
     try {
-      const [compRes, ownRes] = await Promise.all([
-        fetch(`/api/competitor-rate-cards?country_code=${country}`),
-        fetch(`/api/rate-cards?country_code=${country}`),
-      ])
-      if (compRes.ok) setCompetitorCards(await compRes.json())
-      if (ownRes.ok) setOwnRateCards(await ownRes.json())
+      const res = await fetch('/api/competitor-rate-cards')
+      if (res.ok) setCompetitorCards(await res.json())
+    } catch { /* non-fatal */ }
+    try {
+      const res = await fetch('/api/rate-cards?with_brackets=1')
+      if (res.ok) setOwnRateCards(await res.json())
     } catch { /* non-fatal */ }
     setLoadingCards(false)
-  }, [country])
+  }, [])
 
   useEffect(() => {
     fetchScenarios()
@@ -376,23 +435,25 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
     }).filter(Boolean) as CompetitorBracketPrice[]
   }
 
-  function buildPricesFromOwnCard(card: RateCard): CompetitorBracketPrice[] {
-    return FIXED_WEIGHTS.map((w, i) => {
-      const bracket = card.brackets.find(b => w > b.weight_min_kg && w <= b.weight_max_kg)
-        ?? card.brackets[card.brackets.length - 1]
-      if (!bracket) return null
-      const freight = bracket.freight_rate_hkd_per_kg * w
-      const price = freight + bracket.reg_fee_hkd
+  function buildPricesFromOwnCard(card: GlobalRateCard): CompetitorBracketPrice[] {
+    const countryBracket = card.country_brackets?.find(
+      cb => cb.country_code === compareCountry
+    ) ?? card.country_brackets?.[0]
+    if (!countryBracket?.brackets?.length) return []
+    const bs = countryBracket.brackets
+    return bs.map((b, i) => {
+      const rep = Math.min(b.weight_min + 0.5, (b.weight_min + b.weight_max) / 2)
+      const price = b.rate_per_kg * rep + b.reg_fee
       return {
-        weight_bracket: `${w}kg`,
-        weight_min: i === 0 ? 0 : FIXED_WEIGHTS[i - 1],
-        weight_max: w,
-        representative_weight: w,
-        rate_per_kg: bracket.freight_rate_hkd_per_kg,
-        reg_fee: bracket.reg_fee_hkd,
+        weight_bracket: `${b.weight_min}–${b.weight_max}kg`,
+        weight_min: b.weight_min,
+        weight_max: b.weight_max,
+        representative_weight: rep,
+        rate_per_kg: b.rate_per_kg,
+        reg_fee: b.reg_fee,
         price: Math.round(price * 100) / 100,
       }
-    }).filter(Boolean) as CompetitorBracketPrice[]
+    })
   }
 
   function buildPricesForCard(prefixedId: string): CompetitorBracketPrice[] {
@@ -400,6 +461,14 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
       const card = ownRateCards.find(c => c.id === prefixedId.slice(4))
       return card ? buildPricesFromOwnCard(card) : []
     }
+    if (prefixedId.startsWith('comp-group:')) {
+      const groupKey = prefixedId.slice('comp-group:'.length)
+      const group = competitorGroups.find(g => g.key === groupKey)
+      if (!group) return []
+      const card = group.cardsByCountry.get(compareCountry)
+      return card ? buildPricesFromCompetitor(card) : []
+    }
+    // fallback for legacy "comp:" prefix (shouldn't occur in new code)
     const realId = prefixedId.startsWith('comp:') ? prefixedId.slice(5) : prefixedId
     const card = competitorCards.find(c => c.id === realId)
     return card ? buildPricesFromCompetitor(card) : []
@@ -418,6 +487,7 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
             price_unit: 'per_ticket',
             scenario_id: sid,
             adjustment_pct: 0,
+            country_code: compareCountry,
           }),
         })
         if (!res.ok) {
@@ -478,6 +548,7 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
                 price_unit: 'per_ticket',
                 scenario_id: sid,
                 adjustment_pct: 0,
+                country_code: compareCountry,
               }),
             })
             if (!res.ok) { const err = await res.json(); throw new Error(err.error || '計算失敗') }
@@ -502,6 +573,7 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
                 price_unit: 'per_ticket',
                 scenario_id: sid,
                 adjustment_pct: 0,
+                country_code: compareCountry,
               }),
             })
             if (!res.ok) { const err = await res.json(); throw new Error(err.error || '計算失敗') }
@@ -541,7 +613,10 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
 
   const validLeftIds = leftItemIds.filter(Boolean)
   const validRightIds = rightItemIds.filter(Boolean)
+  const needsCountry = allCountryOptions.length > 0
+    && ([...validLeftIds, ...validRightIds].some(id => id.startsWith('comp-group:')))
   const canCompute = validLeftIds.length > 0 && validRightIds.length > 0
+    && (!needsCountry || !!compareCountry)
 
   const hasLeftResults = leftType === 'card' ? leftPricesMap.size > 0 : leftScenarioResults.length > 0
   const hasRightResults = rightType === 'card' ? rightPricesMap.size > 0 : rightScenarioResults.length > 0
@@ -720,19 +795,22 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
                             .filter(c => !itemIds.includes(`own:${c.id}`) || `own:${c.id}` === itemId)
                             .map(c => (
                               <SelectItem key={`own:${c.id}`} value={`own:${c.id}`}>
-                                {c.name}
+                                {c.product_name}
                               </SelectItem>
                             ))}
                         </SelectGroup>
                       )}
-                      {competitorCards.length > 0 && (
+                      {competitorGroups.length > 0 && (
                         <SelectGroup>
                           <SelectLabel>{t.pricingAnalysis.compete.competitorCardGroup}</SelectLabel>
-                          {competitorCards
-                            .filter(c => !itemIds.includes(`comp:${c.id}`) || `comp:${c.id}` === itemId)
-                            .map(c => (
-                              <SelectItem key={`comp:${c.id}`} value={`comp:${c.id}`}>
-                                {c.competitor_name} {c.service_code}
+                          {competitorGroups
+                            .filter(g => !itemIds.includes(`comp-group:${g.key}`) || `comp-group:${g.key}` === itemId)
+                            .map(g => (
+                              <SelectItem key={`comp-group:${g.key}`} value={`comp-group:${g.key}`}>
+                                {g.label}
+                                <span className="ml-1 text-xs text-muted-foreground">
+                                  ({g.cardsByCountry.size} 國)
+                                </span>
                               </SelectItem>
                             ))}
                         </SelectGroup>
@@ -893,6 +971,23 @@ export function CompeteStep1({ onProceed, displayCurrency = 'HKD', currencyMulti
       {/* ── Selection Card ─────────────────────────────────────────── */}
       <Card>
         <CardContent className="pt-6 space-y-4">
+          {allCountryOptions.length > 0 && (
+            <div className="flex items-center gap-3 pb-2 border-b">
+              <Label className="text-xs text-muted-foreground shrink-0">目的國</Label>
+              <Select value={compareCountry} onValueChange={setCompareCountry}>
+                <SelectTrigger className="w-52">
+                  <SelectValue placeholder="選擇目的國…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allCountryOptions.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">（競對價卡依目的國計算 D 段尾程）</span>
+            </div>
+          )}
+
           <div className="flex gap-4">
             {renderSideSelector('left', leftType, handleLeftTypeChange, leftItemIds, setLeftItemIds)}
             <div className="w-px bg-border self-stretch" />

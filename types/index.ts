@@ -5,6 +5,7 @@ export interface ExchangeRates {
   hkd_rmb: number
   usd_rmb: number
   jpy_hkd?: number
+  twd_hkd?: number
   updated_at?: string
   is_current?: boolean
 }
@@ -111,6 +112,45 @@ export interface RateCard {
   updated_at?: string
 }
 
+// ─── Global rate card types (Phase 2) ────────────────────────────────────────
+
+export interface ApiCountryBracket {
+  weight_min: number
+  weight_max: number
+  rate_per_kg: number
+  reg_fee: number
+  cost_hkd?: number
+}
+
+export interface RateCardCountryBracket {
+  id?: string
+  rate_card_id?: string
+  country_code: string
+  country_name_en: string
+  country_name_zh?: string | null
+  brackets: ApiCountryBracket[]
+  created_at?: string
+}
+
+export interface GlobalRateCard {
+  id?: string
+  product_code: string
+  product_name: string
+  scenario_id?: string | null
+  source: 'scenario' | 'manual'
+  currency: string
+  fuel_surcharge_pct: number
+  weight_step: number
+  version: number
+  valid_from?: string
+  valid_to?: string | null
+  is_current: boolean
+  deleted_at?: string | null
+  created_at?: string
+  updated_at?: string
+  country_brackets?: RateCardCountryBracket[]
+}
+
 export interface CompetitorRate {
   id?: string
   product_code: string
@@ -168,9 +208,8 @@ export const WEIGHT_BRACKETS: readonly WeightPoint[] = [
 
 // 24 個成本驗算重量點（方案分析用）
 export const SCENARIO_VERIFICATION_WEIGHTS: WeightPoint[] = [
-  0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
-  0.5, 0.6, 0.7, 0.8, 0.9, 1,
-  2, 3, 4, 5, 6, 7, 8, 9, 10,
+  0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30,
 ].map((w, i, arr) => ({
   range: `${w}kg`,
   min: i === 0 ? 0 : arr[i - 1],
@@ -197,6 +236,7 @@ export const DEFAULT_EXCHANGE_RATES: ExchangeRates = {
   hkd_rmb: 0.934,
   usd_rmb: 7.295,
   jpy_hkd: 0.052,
+  twd_hkd: 0.2440,
 }
 
 export const DEFAULT_CARRIER_PROPORTIONS: Omit<CarrierProportion, 'id' | 'updated_at' | 'is_current'>[] = [

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import type { VendorARate } from '@/types/vendor'
 
 export async function GET(
@@ -8,7 +8,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('vendor_a_rates')
       .select('*')
@@ -37,7 +37,7 @@ export async function POST(
       return NextResponse.json({ error: '未提供報價數據' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Deactivate old rates for this vendor
     await supabase
@@ -53,6 +53,7 @@ export async function POST(
       sorting_hkd_per_kg: r.sorting_hkd_per_kg,
       include_sorting: r.include_sorting ?? false,
       bubble_ratio: r.bubble_ratio ?? 1.0,
+      per_kg_currency: r.per_kg_currency ?? 'TWD',
       notes: r.notes || null,
       is_current: true,
     }))

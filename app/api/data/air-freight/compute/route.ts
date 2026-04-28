@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import type { ComputeStrategy } from '@/types'
 import { GATEWAYS } from '@/types'
 
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { strategy, cargo_type = '特惠带电', custom_weeks } = body
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Fetch records for the cargo type, ordered by date desc
     const { data: allRecords, error } = await supabase

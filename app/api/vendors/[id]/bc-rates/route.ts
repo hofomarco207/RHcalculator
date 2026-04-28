@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { deactivateCurrentRates, getNextVersion } from '@/lib/supabase/query-helpers'
 
 export async function GET(
@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { id } = await params
     const versionParam = request.nextUrl.searchParams.get('version')
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     let query = supabase
       .from('vendor_bc_rates')
       .select('*')
@@ -40,13 +40,13 @@ export async function POST(
   try {
     const { id } = await params
     const body = await request.json()
-    const { rate_per_kg, handling_fee_per_unit, additional_surcharge, currency, notes } = body
+    const { rate_per_kg, fuel_surcharge_pct, currency, notes } = body
 
     if (rate_per_kg == null || isNaN(Number(rate_per_kg))) {
       return NextResponse.json({ error: '請提供有效的每公斤費率' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const version = await getNextVersion(supabase, 'vendor_bc_rates', id)
     await deactivateCurrentRates(supabase, 'vendor_bc_rates', id)
 
@@ -54,9 +54,9 @@ export async function POST(
     const { error } = await supabase.from('vendor_bc_rates').insert({
       vendor_id: id,
       rate_per_kg: Number(rate_per_kg),
-      handling_fee_per_unit: Number(handling_fee_per_unit ?? 0),
-      additional_surcharge: Number(additional_surcharge ?? 0),
-      currency: currency || 'USD',
+      fuel_surcharge_pct: Number(fuel_surcharge_pct ?? 0),
+      handling_fee: 0,
+      currency: currency || 'TWD',
       notes: notes || null,
       version,
       valid_from: today,

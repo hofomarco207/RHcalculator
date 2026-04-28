@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 /**
  * GET /api/competitor-rate-cards/compare
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     let query = supabase
       .from('competitor_rate_cards')
       .select('id, competitor_name, service_code, country_code, country_name_en, country_name_zh, version, valid_from, valid_to, is_current, currency, brackets, fuel_surcharge_pct, weight_step, effective_date')

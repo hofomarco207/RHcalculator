@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { deactivateCurrentRates, getNextVersion } from '@/lib/supabase/query-helpers'
 
 export async function GET(
@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { id } = await params
     const versionParam = request.nextUrl.searchParams.get('version')
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     let query = supabase
       .from('vendor_d_tiered_rates')
       .select('*')
@@ -61,7 +61,7 @@ export async function POST(
       return NextResponse.json({ error: '未提供費率數據' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const version = await getNextVersion(supabase, 'vendor_d_tiered_rates', id)
     await deactivateCurrentRates(supabase, 'vendor_d_tiered_rates', id)
 

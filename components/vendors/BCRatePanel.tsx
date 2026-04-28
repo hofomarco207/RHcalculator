@@ -24,9 +24,8 @@ interface BCRatePanelProps {
 export function BCRatePanel({ vendor }: BCRatePanelProps) {
   const t = useT()
   const [ratePerKg, setRatePerKg] = useState('')
-  const [handlingFee, setHandlingFee] = useState('')
-  const [surcharge, setSurcharge] = useState('')
-  const [currency, setCurrency] = useState('USD')
+  const [fuelSurchargePct, setFuelSurchargePct] = useState('0')
+  const [currency, setCurrency] = useState('TWD')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -39,13 +38,12 @@ export function BCRatePanel({ vendor }: BCRatePanelProps) {
         const data = await res.json()
         if (data && data.rate_per_kg != null) {
           setRatePerKg(String(data.rate_per_kg))
-          setHandlingFee(String(data.handling_fee_per_unit || ''))
-          setSurcharge(String(data.additional_surcharge || ''))
-          setCurrency(data.currency || 'USD')
+          setFuelSurchargePct(String(data.fuel_surcharge_pct ?? 0))
+          setCurrency(data.currency || 'TWD')
           setNotes(data.notes || '')
         }
       } catch (err) {
-        console.error('Load BCD rates error:', err)
+        console.error('Load BC rates error:', err)
       } finally {
         setLoading(false)
       }
@@ -56,7 +54,7 @@ export function BCRatePanel({ vendor }: BCRatePanelProps) {
   async function handleSave() {
     const rate = parseFloat(ratePerKg)
     if (!ratePerKg || isNaN(rate) || rate <= 0) {
-      toast.error(t.vendorPanels.bcRate.ratePerKg)
+      toast.error('請輸入有效的每公斤費率')
       return
     }
     setSaving(true)
@@ -66,8 +64,7 @@ export function BCRatePanel({ vendor }: BCRatePanelProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           rate_per_kg: rate,
-          handling_fee_per_unit: handlingFee ? parseFloat(handlingFee) : 0,
-          additional_surcharge: surcharge ? parseFloat(surcharge) : 0,
+          fuel_surcharge_pct: parseFloat(fuelSurchargePct) || 0,
           currency,
           notes: notes.trim() || null,
         }),
@@ -93,7 +90,8 @@ export function BCRatePanel({ vendor }: BCRatePanelProps) {
   }
 
   const rate = parseFloat(ratePerKg) || 0
-  const handling = parseFloat(handlingFee) || 0
+  const fuelPct = parseFloat(fuelSurchargePct) || 0
+  const totalMultiplier = 1 + fuelPct / 100
 
   return (
     <Card>
@@ -102,7 +100,7 @@ export function BCRatePanel({ vendor }: BCRatePanelProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <RateVersionBar vendorId={vendor.id} table="vendor_bc_rates" refreshKey={versionRefreshKey} />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="space-y-1">
             <Label className="text-xs">{t.vendorPanels.bcRate.ratePerKg} *</Label>
             <Input
@@ -114,22 +112,13 @@ export function BCRatePanel({ vendor }: BCRatePanelProps) {
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">{t.vendorPanels.bcRate.handlingFee}</Label>
+            <Label className="text-xs">燃油附加費 (%)</Label>
             <Input
               type="number"
-              step="0.01"
-              value={handlingFee}
-              onChange={(e) => setHandlingFee(e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">{t.vendorPanels.bcRate.surcharge}</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={surcharge}
-              onChange={(e) => setSurcharge(e.target.value)}
+              step="0.1"
+              min="0"
+              value={fuelSurchargePct}
+              onChange={(e) => setFuelSurchargePct(e.target.value)}
               placeholder="0"
             />
           </div>
@@ -138,9 +127,10 @@ export function BCRatePanel({ vendor }: BCRatePanelProps) {
             <Select value={currency} onValueChange={setCurrency}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="TWD">TWD</SelectItem>
+                <SelectItem value="HKD">HKD</SelectItem>
                 <SelectItem value="USD">USD</SelectItem>
                 <SelectItem value="RMB">RMB</SelectItem>
-                <SelectItem value="HKD">HKD</SelectItem>
                 <SelectItem value="JPY">JPY</SelectItem>
               </SelectContent>
             </Select>
@@ -159,8 +149,8 @@ export function BCRatePanel({ vendor }: BCRatePanelProps) {
           <div className="text-xs text-muted-foreground">
             {rate > 0 && (
               <span>
-                成本 = {rate} {currency}/KG × 重量
-                {handling > 0 && ` + ${handling} ${currency}/單`}
+                成本 = {rate} {currency}/KG × 重量 × {totalMultiplier.toFixed(4)}
+                {fuelPct > 0 && <span className="text-blue-500 ml-1">（含 {fuelPct}% 燃油）</span>}
               </span>
             )}
           </div>

@@ -107,10 +107,10 @@ export function SegmentBCConfig({
             <span className="text-muted-foreground">{t.scenarioConfig.ratePerKgLabel}</span>
             <span className="font-mono">{rate.rate_per_kg} {rate.currency}</span>
           </div>
-          {rate.handling_fee_per_unit > 0 && (
+          {rate.handling_fee > 0 && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t.scenarioConfig.handlingFeeLabel}</span>
-              <span className="font-mono">{rate.handling_fee_per_unit} {rate.currency}</span>
+              <span className="font-mono">{rate.handling_fee} {rate.currency}</span>
             </div>
           )}
           {rate.notes && (

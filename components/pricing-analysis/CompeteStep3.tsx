@@ -13,7 +13,7 @@ import type { DisplayCurrency } from './CompeteTab'
 interface CompeteStep3Props {
   brackets: CompeteBracketResult[]
   weightedMargin: number | null
-  pricingMode: 'segmented' | 'bc_combined' | 'bcd_combined' | 'multi_b' | 'multi_b_b2c'
+  pricingMode: 'segmented' | 'bc_combined' | 'bcd_combined'
   displayCurrency: DisplayCurrency
   currencyMultiplier: number
   onNext: () => void
