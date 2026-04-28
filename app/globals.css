@@ -2,9 +2,8 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ── Design System: "Precision Terminal" ──
-   Aerospace mission-control aesthetic. Dark sidebar frame,
-   warm content surface, iMile orange as singular bold accent.
+/* ── Design System: "FlexForward Terminal" ──
+   Dark sidebar frame, warm content surface, sky blue as singular bold accent.
    Typography: Space Grotesk (display) + Geist (body) + Geist Mono (data).
 */
 
@@ -51,13 +50,13 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 
-  /* iMile brand palette */
-  --color-imile: #FF6B00;
-  --color-imile-light: #FF8A33;
-  --color-imile-dark: #E55F00;
-  --color-imile-50: #FFF7ED;
-  --color-imile-100: #FFEDD5;
-  --color-imile-900: #431407;
+  /* FlexForward brand palette — sky blue */
+  --color-ff: #0284C7;
+  --color-ff-light: #38BDF8;
+  --color-ff-dark: #0369A1;
+  --color-ff-50: #F0F9FF;
+  --color-ff-100: #E0F2FE;
+  --color-ff-900: #0C4A6E;
 }
 
 :root {
@@ -67,20 +66,20 @@
   --card-foreground: #1C1E26;
   --popover: #FFFFFF;
   --popover-foreground: #1C1E26;
-  --primary: #FF6B00;
+  --primary: #0284C7;
   --primary-foreground: #FFFFFF;
-  --secondary: #F0EDE8;
+  --secondary: #F0F4F8;
   --secondary-foreground: #1C1E26;
-  --muted: #F0EDE8;
+  --muted: #F0F4F8;
   --muted-foreground: #6B7280;
-  --accent: #F0EDE8;
-  --accent-foreground: #1C1E26;
+  --accent: #E0F2FE;
+  --accent-foreground: #0C4A6E;
   --destructive: #DC2626;
-  --border: #E5E2DB;
-  --input: #E5E2DB;
-  --ring: #FF6B00;
-  --chart-1: #FF6B00;
-  --chart-2: #2563EB;
+  --border: #DDE3EA;
+  --input: #DDE3EA;
+  --ring: #0284C7;
+  --chart-1: #0284C7;
+  --chart-2: #0891B2;
   --chart-3: #16A34A;
   --chart-4: #9333EA;
   --chart-5: #DC2626;
@@ -89,12 +88,12 @@
   /* Dark sidebar */
   --sidebar: #1C1E26;
   --sidebar-foreground: #9CA3AF;
-  --sidebar-primary: #FF6B00;
+  --sidebar-primary: #0284C7;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: rgba(255, 107, 0, 0.12);
-  --sidebar-accent-foreground: #FF6B00;
+  --sidebar-accent: rgba(2, 132, 199, 0.15);
+  --sidebar-accent-foreground: #38BDF8;
   --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #FF6B00;
+  --sidebar-ring: #0284C7;
 
   /* Heading font */
   --font-heading: var(--font-space-grotesk), var(--font-geist-sans), system-ui, sans-serif;
@@ -107,7 +106,7 @@
   --card-foreground: #E5E7EB;
   --popover: #1C1E26;
   --popover-foreground: #E5E7EB;
-  --primary: #FF6B00;
+  --primary: #0284C7;
   --primary-foreground: #FFFFFF;
   --secondary: #252830;
   --secondary-foreground: #E5E7EB;
@@ -118,20 +117,20 @@
   --destructive: #EF4444;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.12);
-  --ring: #FF6B00;
-  --chart-1: #FF8A33;
+  --ring: #0284C7;
+  --chart-1: #38BDF8;
   --chart-2: #60A5FA;
   --chart-3: #4ADE80;
   --chart-4: #A78BFA;
   --chart-5: #F87171;
   --sidebar: #0F1117;
   --sidebar-foreground: #9CA3AF;
-  --sidebar-primary: #FF6B00;
+  --sidebar-primary: #0284C7;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: rgba(255, 107, 0, 0.15);
-  --sidebar-accent-foreground: #FF8A33;
+  --sidebar-accent: rgba(2, 132, 199, 0.18);
+  --sidebar-accent-foreground: #38BDF8;
   --sidebar-border: rgba(255, 255, 255, 0.06);
-  --sidebar-ring: #FF6B00;
+  --sidebar-ring: #0284C7;
 }
 
 @layer base {

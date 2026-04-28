@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 export async function GET(
   _request: NextRequest,
@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('vendors')
       .select('*')
@@ -32,7 +32,7 @@ export async function PATCH(
     const body = await request.json()
     const { name, notes, is_active, config, country_code, a_pricing_mode, per_piece_fee, per_piece_currency } = body
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const updates: Record<string, unknown> = {}
     if (name !== undefined) updates.name = name
     if (notes !== undefined) updates.notes = notes
@@ -64,7 +64,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Delete related rate data first
     const rateTables = [

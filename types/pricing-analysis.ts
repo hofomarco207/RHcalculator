@@ -48,7 +48,7 @@ export interface EvaluateResult {
   verdict: Verdict
   segment_breakdown: SegmentBreakdown
   sensitivity: SensitivityPoint[]
-  pricing_mode: 'segmented' | 'bc_combined' | 'bcd_combined' | 'multi_b' | 'multi_b_b2c' | 'multi_b' | 'multi_b_b2c'
+  pricing_mode: 'segmented' | 'bc_combined' | 'bcd_combined'
 }
 
 // ─── Tab 2: Scout (方案搜索) ────────────────────────────────────────────────
@@ -59,7 +59,7 @@ export interface ScoutInput {
   representative_weight: number
   country_code: string
   min_margin: number // default 0.15
-  pricing_mode?: 'segmented' | 'bc_combined' | 'bcd_combined' | 'multi_b' | 'multi_b_b2c'
+  pricing_mode?: 'segmented' | 'bc_combined' | 'bcd_combined'
 }
 
 export interface ScoutVendorInfo {
@@ -139,6 +139,7 @@ export interface CompeteInput {
   price_unit: PriceUnit
   scenario_id: string
   adjustment_pct: number // -0.03 = 便宜3%, 0 = 跟價, +0.05 = 加價5%
+  country_code?: string
   manual_overrides?: Array<{
     weight_bracket: string
     override_price: number
@@ -180,7 +181,7 @@ export interface CompeteResult {
   brackets: CompeteBracketResult[]
   weighted_margin: number | null
   summary: CompeteSummary
-  pricing_mode: 'segmented' | 'bc_combined' | 'bcd_combined' | 'multi_b' | 'multi_b_b2c' | 'multi_b' | 'multi_b_b2c'
+  pricing_mode: 'segmented' | 'bc_combined' | 'bcd_combined'
   scenario_costs: BracketCost[] // raw costs for frontend recalc in Step 4
 }
 
@@ -220,7 +221,7 @@ export interface MarginVerificationTableProps {
   onRegFeeChange?: (index: number, newRegFee: number) => void
   onReset?: (index: number) => void
   weightedMargin?: number | null
-  pricingMode?: 'segmented' | 'bc_combined' | 'bcd_combined' | 'multi_b' | 'multi_b_b2c'
+  pricingMode?: 'segmented' | 'bc_combined' | 'bcd_combined'
   displayCurrency?: string
   currencyMultiplier?: number
 }

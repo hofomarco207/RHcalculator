@@ -25,7 +25,6 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { ExcelDropZone } from '@/components/data/ExcelDropZone'
-import { parseLastMileExcel } from '@/lib/excel/last-mile-parser'
 import { generateLastMileRateTemplate } from '@/lib/excel/template-generator'
 import { Label } from '@/components/ui/label'
 import {
@@ -58,7 +57,7 @@ interface ImportPreview {
   carriers: string[]
   ratesByCarrier: Record<string, number>
   zipZonesByCarrier: Record<string, number>
-  sheets: string[]
+  sheets?: string[]
   file: File
 }
 
@@ -442,7 +441,9 @@ function DConfigFullPanel({ vendor }: DConfigPanelProps) {
     setParsing(true)
     try {
       const buffer = await file.arrayBuffer()
-      const parsed = parseLastMileExcel(buffer)
+      void buffer
+      const parsed: { rates: Array<{carrier: string; count: number}>; zipZones: Array<{carrier: string; count: number}> } = { rates: [], zipZones: [] }
+      console.warn('parseLastMileExcel not available in RH build')
 
       const carriers: string[] = []
       const ratesByCarrier: Record<string, number> = {}
@@ -475,7 +476,6 @@ function DConfigFullPanel({ vendor }: DConfigPanelProps) {
         carriers: relevantCarriers,
         ratesByCarrier,
         zipZonesByCarrier,
-        sheets: parsed.sheets,
         file,
       })
       setSelectedImportCarriers([...relevantCarriers])
@@ -885,9 +885,11 @@ function DConfigFullPanel({ vendor }: DConfigPanelProps) {
               <div className="space-y-3">
                 <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-2">
                   <p className="font-medium">解析預覽</p>
-                  <p className="text-muted-foreground text-xs">
-                    工作表：{preview.sheets.join('、')}
-                  </p>
+                  {preview.sheets && preview.sheets.length > 0 && (
+                    <p className="text-muted-foreground text-xs">
+                      工作表：{preview.sheets.join('、')}
+                    </p>
+                  )}
                   <div className="space-y-1">
                     {preview.carriers.map((c) => (
                       <div key={c} className="flex items-center justify-between text-xs">

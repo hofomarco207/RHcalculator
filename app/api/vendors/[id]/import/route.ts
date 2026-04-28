@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 type Segment = 'A' | 'B' | 'C' | 'D'
 
 const CHUNK = 500
 
 async function importSegmentA(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
   vendorId: string,
   data: Record<string, unknown>[]
 ): Promise<number> {
@@ -34,7 +34,7 @@ async function importSegmentA(
 }
 
 async function importSegmentB(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
   vendorId: string,
   data: Record<string, unknown>[]
 ): Promise<number> {
@@ -75,7 +75,7 @@ async function importSegmentB(
 }
 
 async function importSegmentC(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
   vendorId: string,
   data: Record<string, unknown>[]
 ): Promise<number> {
@@ -106,7 +106,7 @@ async function importSegmentC(
 }
 
 async function importSegmentD(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
   vendorId: string,
   data: Record<string, unknown>[]
 ): Promise<number> {
@@ -150,7 +150,7 @@ export async function POST(
       return NextResponse.json({ error: '未提供資料或資料為空' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     let count = 0
     switch (segment) {

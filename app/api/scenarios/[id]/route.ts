@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 export async function GET(
   _request: NextRequest,
@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('scenarios')
       .select('*')
@@ -22,19 +22,13 @@ export async function GET(
   }
 }
 
-/** Columns accepted by PATCH — mirror POST whitelist + use_median_pricing. */
+/** Columns accepted by PATCH. */
 const UPDATABLE_FIELDS = [
-  'name', 'country_code', 'weekly_tickets', 'weekly_kg', 'zip_source',
+  'name', 'weekly_tickets', 'weekly_kg',
   'seg_a', 'vendor_a_id',
-  'vendor_b_id', 'b_gateway_mode', 'b_single_gateway', 'b_manual_proportions',
-  'b_bubble_rate', 'b1_bubble_ratio',
-  'vendor_c_id', 'c_overrides',
-  'vendor_d_id', 'd_carrier_proportions', 'd_pricing_model',
+  'vendor_bc_id', 'bc_bubble_ratio',
+  'vendor_d_id', 'd_competitor_name', 'd_service_code',
   'exchange_rates', 'pricing_mode',
-  'vendor_bc_id', 'vendor_bcd_id',
-  'flights_per_week',
-  'vendor_b2_id', 'b2_service_name', 'b2_gateway_mode', 'b2_single_gateway', 'b2_manual_proportions',
-  'use_median_pricing', 'bc_bubble_ratio',
   'results',
 ] as const
 
@@ -51,7 +45,7 @@ export async function PATCH(
       if (key in body) patch[key] = body[key]
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('scenarios')
       .update(patch)
@@ -76,7 +70,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { error } = await supabase.from('scenarios').delete().eq('id', id)
     if (error) throw error
     return NextResponse.json({ success: true })

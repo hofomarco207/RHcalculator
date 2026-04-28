@@ -15,8 +15,6 @@ import {
   scenarioSegCTooltip,
   scenarioSegBCTooltip,
   scenarioSegDTooltip,
-  scenarioSegB2Tooltip,
-  scenarioSegB2CTooltip,
 } from '@/components/rate-card/CostTooltip'
 import type { BracketCost } from '@/types/scenario'
 import { invalidSegments, isCostValid, type PricingMode } from '@/lib/utils/cost-validation'
@@ -41,16 +39,9 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
   const isBCCombined = pricingMode === 'bc_combined'
     || (!pricingMode && costs.some((b) => b.seg_bc != null && b.detail?.seg_bc != null))
   const isBCDCombined = pricingMode === 'bcd_combined'
-  const isMultiB = pricingMode === 'multi_b'
-    || (!pricingMode && costs.some((b) => b.detail?.seg_b2 != null))
-  const isMultiBB2C = pricingMode === 'multi_b_b2c'
-    || (!pricingMode && costs.some((b) => b.detail?.seg_b2c != null))
-
   const resolvedMode: PricingMode =
     pricingMode ??
     (isBCDCombined ? 'bcd_combined'
-      : isMultiBB2C ? 'multi_b_b2c'
-      : isMultiB ? 'multi_b'
       : isBCCombined ? 'bc_combined'
       : 'segmented')
 
@@ -67,17 +58,6 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
                 <TableHead className="text-center font-medium text-teal-500">BCD 全段</TableHead>
               ) : isBCCombined ? (
                 <TableHead className="text-center font-medium text-teal-500">BC 空運+清關</TableHead>
-              ) : isMultiB ? (
-                <>
-                  <TableHead className="text-center font-medium text-orange-500">B1段 空運</TableHead>
-                  <TableHead className="text-center font-medium text-sky-500">B2段 空運</TableHead>
-                  <TableHead className="text-center font-medium text-purple-500">C段 清關</TableHead>
-                </>
-              ) : isMultiBB2C ? (
-                <>
-                  <TableHead className="text-center font-medium text-orange-500">B1段 空運</TableHead>
-                  <TableHead className="text-center font-medium text-teal-500">B2C 空運+清關</TableHead>
-                </>
               ) : (
                 <>
                   <TableHead className="text-center font-medium text-orange-500">B段 空運</TableHead>
@@ -144,77 +124,6 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
                         </span>
                       </CostTooltip>
                     </TableCell>
-                  ) : isMultiB ? (
-                    <>
-                      {/* B1段 */}
-                      <TableCell className={`text-center font-mono text-xs ${bad('seg_b') ? INVALID_CELL : ''}`}>
-                        <CostTooltip
-                          content={detail
-                            ? scenarioSegBTooltip(detail.seg_b, b.seg_b, 'B1段 空運')
-                            : <span>{fmt(b.seg_b)} HKD</span>
-                          }
-                        >
-                          <span className={bad('seg_b') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                            {fmt(b.seg_b)}
-                          </span>
-                        </CostTooltip>
-                      </TableCell>
-                      {/* B2段 */}
-                      <TableCell className={`text-center font-mono text-xs ${bad('seg_b2') ? INVALID_CELL : ''}`}>
-                        <CostTooltip
-                          content={detail?.seg_b2
-                            ? scenarioSegB2Tooltip(detail.seg_b2, b.seg_b2 ?? 0)
-                            : <><span className="text-blue-400 font-semibold">B2段 空運</span>{'\n'}<span className="text-amber-400">= {fmt(b.seg_b2 ?? 0)} HKD</span></>
-                          }
-                        >
-                          <span className={bad('seg_b2') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                            {fmt(b.seg_b2 ?? 0)}
-                          </span>
-                        </CostTooltip>
-                      </TableCell>
-                      {/* C段 */}
-                      <TableCell className={`text-center font-mono text-xs ${bad('seg_c') ? INVALID_CELL : ''}`}>
-                        <CostTooltip
-                          content={detail
-                            ? scenarioSegCTooltip(detail.seg_c, b.seg_c)
-                            : <span>{fmt(b.seg_c)} HKD</span>
-                          }
-                        >
-                          <span className={bad('seg_c') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                            {fmt(b.seg_c)}
-                          </span>
-                        </CostTooltip>
-                      </TableCell>
-                    </>
-                  ) : isMultiBB2C ? (
-                    <>
-                      {/* B1段 */}
-                      <TableCell className={`text-center font-mono text-xs ${bad('seg_b') ? INVALID_CELL : ''}`}>
-                        <CostTooltip
-                          content={detail
-                            ? scenarioSegBTooltip(detail.seg_b, b.seg_b, 'B1段 空運')
-                            : <span>{fmt(b.seg_b)} HKD</span>
-                          }
-                        >
-                          <span className={bad('seg_b') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                            {fmt(b.seg_b)}
-                          </span>
-                        </CostTooltip>
-                      </TableCell>
-                      {/* B2C段 */}
-                      <TableCell className={`text-center font-mono text-xs ${bad('seg_b2c') ? INVALID_CELL : ''}`}>
-                        <CostTooltip
-                          content={detail?.seg_b2c
-                            ? scenarioSegB2CTooltip(detail.seg_b2c, b.seg_b2c ?? 0)
-                            : <><span className="text-teal-400 font-semibold">B2C 空運+清關</span>{'\n'}<span className="text-amber-400">= {fmt(b.seg_b2c ?? 0)} HKD</span></>
-                          }
-                        >
-                          <span className={bad('seg_b2c') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                            {fmt(b.seg_b2c ?? 0)}
-                          </span>
-                        </CostTooltip>
-                      </TableCell>
-                    </>
                   ) : (
                     <>
                       {/* B段 */}

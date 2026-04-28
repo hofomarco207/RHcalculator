@@ -19,6 +19,7 @@ interface CompeteParams {
   competitorPrices: CompetitorBracketPrice[]
   priceUnit: PriceUnit
   adjustmentPct: number
+  countryCode?: string
   manualOverrides?: Array<{ weight_bracket: string; override_price: number }>
   weightDistribution?: Array<{ weight_bracket: string; proportion: number }>
 }
@@ -27,7 +28,7 @@ export function competeAnalysis(
   data: ScenarioComputeData,
   params: CompeteParams,
 ): CompeteResult {
-  const { competitorPrices, priceUnit, adjustmentPct, manualOverrides, weightDistribution } = params
+  const { competitorPrices, priceUnit, adjustmentPct, countryCode, manualOverrides, weightDistribution } = params
 
   // Build WeightPoint[] from competitor brackets
   const weightPoints: WeightPoint[] = competitorPrices.map((cp) => ({
@@ -38,7 +39,7 @@ export function competeAnalysis(
   }))
 
   // Compute costs at all bracket representative weights
-  const results = computeAtWeights(data, weightPoints)
+  const results = computeAtWeights(data, weightPoints, countryCode ?? '')
   const costs = results.cost_per_bracket
 
   // Build override lookup
@@ -88,8 +89,6 @@ export function competeAnalysis(
       c: cost.seg_c,
       d: cost.seg_d,
       bc: cost.seg_bc,
-      b2: cost.seg_b2,
-      b2c: cost.seg_b2c,
     }
 
     return {

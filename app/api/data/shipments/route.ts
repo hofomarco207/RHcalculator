@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { read, utils } from 'xlsx'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 const VALID_GATEWAYS = ['LAX', 'JFK', 'ORD', 'DFW', 'MIA']
 
 // GET — list all import batches
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('import_batches')
       .select('id, filename, record_count, date_start, date_end, status, created_at')
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     const date_start = dates[0] ?? null
     const date_end = dates[dates.length - 1] ?? null
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Create batch record
     const { data: batch, error: batchError } = await supabase
@@ -115,7 +115,7 @@ export async function DELETE(request: NextRequest) {
     const batch_id = searchParams.get('batch_id')
     if (!batch_id) return NextResponse.json({ error: '缺少 batch_id' }, { status: 400 })
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Delete shipments first (FK constraint)
     const { error: shipmentsErr } = await supabase

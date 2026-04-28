@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 // GET /api/weight-break?country_code=US
 export async function GET(req: NextRequest) {
   const countryCode = req.nextUrl.searchParams.get('country_code')
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   let query = supabase
     .from('weight_break_datasets')
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'country_code, label, and entries[] required' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   // Calculate total orders
   const totalOrders = entries.reduce((s: number, e: { order_count: number }) => s + (e.order_count || 0), 0)

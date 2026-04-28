@@ -33,7 +33,6 @@ import {
 import { toast } from 'sonner'
 import { useCountry } from '@/lib/context/country-context'
 import { useT } from '@/lib/i18n'
-import { ZoneMappingsTab } from '@/components/settings/ZoneMappingsTab'
 import { CompetitorImportDialog } from '@/components/settings/CompetitorImportDialog'
 import { CompetitorCompareDialog } from '@/components/settings/CompetitorCompareDialog'
 import { COUNTRY_SEED, getCountryFlag } from '@/lib/data/country-seed'
@@ -1538,7 +1537,6 @@ export default function SettingsPage() {
           <TabsTrigger value="gateways">{t.pages.settings.gateways}</TabsTrigger>
           <TabsTrigger value="carriers">{t.pages.settings.carriers}</TabsTrigger>
           <TabsTrigger value="competitor">{t.pages.settings.competitorCards}</TabsTrigger>
-          <TabsTrigger value="zones">{t.pages.settings.zoneMappings}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="countries" className="mt-4">
@@ -1557,9 +1555,6 @@ export default function SettingsPage() {
           <CompetitorTab />
         </TabsContent>
 
-        <TabsContent value="zones" className="mt-4">
-          <ZoneMappingsTab />
-        </TabsContent>
       </Tabs>
     </div>
   )

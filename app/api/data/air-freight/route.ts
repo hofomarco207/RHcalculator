@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { parseAirFreightExcel } from '@/lib/excel/air-freight-parser'
 
 // GET: List air freight history records
 export async function GET(request: NextRequest) {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const cargoType = request.nextUrl.searchParams.get('cargo_type') ?? '特惠带电'
 
   const { data, error } = await supabase
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未能解析任何有效空運報價記錄' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Get discount from config or form
     let discount = 0

@@ -29,9 +29,10 @@ export function ARatePanel({ vendor }: ARatePanelProps) {
   const [sortingRate, setSortingRate] = useState('')
   const [includeSorting, setIncludeSorting] = useState(false)
   const [bubbleRatio, setBubbleRatio] = useState('1.0')
+  const [perKgCurrency, setPerKgCurrency] = useState('TWD')
   // per_piece fields (additive, not exclusive)
   const [perPieceFee, setPerPieceFee] = useState(String(vendor.per_piece_fee ?? ''))
-  const [perPieceCurrency, setPerPieceCurrency] = useState(vendor.per_piece_currency ?? 'HKD')
+  const [perPieceCurrency, setPerPieceCurrency] = useState(vendor.per_piece_currency ?? 'TWD')
 
   const loadRates = useCallback(async () => {
     setLoading(true)
@@ -49,6 +50,7 @@ export function ARatePanel({ vendor }: ARatePanelProps) {
         setSortingRate(String(current.sorting_hkd_per_kg ?? ''))
         setIncludeSorting(current.include_sorting ?? false)
         setBubbleRatio(String(current.bubble_ratio ?? 1.0))
+        if (current.per_kg_currency) setPerKgCurrency(current.per_kg_currency)
       }
     } catch (err) {
       console.error('Load A rates error:', err)
@@ -97,6 +99,7 @@ export function ARatePanel({ vendor }: ARatePanelProps) {
             sorting_hkd_per_kg: sortingNum,
             include_sorting: includeSorting,
             bubble_ratio: bubbleNum,
+            per_kg_currency: perKgCurrency,
           }],
         }),
       })
@@ -122,10 +125,24 @@ export function ARatePanel({ vendor }: ARatePanelProps) {
           <div className="space-y-5">
             {/* 按公斤 */}
             <section className="space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">按公斤計費</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">按公斤計費</h4>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-muted-foreground">幣種</Label>
+                  <Select value={perKgCurrency} onValueChange={setPerKgCurrency}>
+                    <SelectTrigger className="h-7 w-20 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TWD">TWD</SelectItem>
+                      <SelectItem value="HKD">HKD</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="RMB">RMB</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
-                  <Label>{t.vendorPanels.aRate.pickupFee}（HKD/kg）</Label>
+                  <Label>{t.vendorPanels.aRate.pickupFee}（{perKgCurrency}/kg）</Label>
                   <Input
                     type="number" step="0.01" min="0"
                     value={pickupRate}
@@ -134,7 +151,7 @@ export function ARatePanel({ vendor }: ARatePanelProps) {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t.vendorPanels.aRate.sortingFee}（HKD/kg）</Label>
+                  <Label>{t.vendorPanels.aRate.sortingFee}（{perKgCurrency}/kg）</Label>
                   <Input
                     type="number" step="0.01" min="0"
                     value={sortingRate}
@@ -185,16 +202,17 @@ export function ARatePanel({ vendor }: ARatePanelProps) {
                   <Select value={perPieceCurrency} onValueChange={setPerPieceCurrency}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="TWD">TWD</SelectItem>
                       <SelectItem value="HKD">HKD</SelectItem>
-                      <SelectItem value="JPY">JPY</SelectItem>
                       <SelectItem value="USD">USD</SelectItem>
                       <SelectItem value="RMB">RMB</SelectItem>
+                      <SelectItem value="JPY">JPY</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                A段成本 = (處理費 + 分揀費?) × 實重 × 拋率 + 件費折 HKD
+                A段成本 = (處理費 + 分揀費?) × 實重 × 拋率 × TWD/HKD匯率 + 件費折 HKD
               </p>
             </section>
 

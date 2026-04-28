@@ -1,251 +1,182 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, CheckCircle2 } from 'lucide-react'
+import { Loader2, CheckCircle2, Globe, ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
-import { useCountry } from '@/lib/context/country-context'
 import { useT } from '@/lib/i18n'
-import { getMarginColorClass } from '@/lib/utils/margin'
 import { FlowStepper } from './shared/FlowStepper'
-import {
-  UnifiedVerificationTable,
-  computeScenarioCostAtWeight,
-  type ScenarioSource,
-} from './shared/UnifiedVerificationTable'
-import { RateCardTable } from '@/components/rate-card/RateCardTable'
-import { BracketEditor } from '@/components/rate-card/BracketEditor'
-import { DEFAULT_EXCHANGE_RATES, UNIFIED_WEIGHT_POINTS } from '@/types'
-import type { WeightPoint } from '@/types'
-import type { BracketCost } from '@/types/scenario'
-import type { RateCardBracket } from '@/types'
 import { generateRateCardFromScenario } from '@/lib/calculations/scenario-pricing'
-import { exportRateCardToExcel, type ExportCurrency } from '@/lib/excel/exporter'
-import { createClient } from '@/lib/supabase/client'
+import type { BracketCost } from '@/types/scenario'
+import type { RateCardBracket, ApiCountryBracket } from '@/types'
 
 interface ScenarioOption {
   id: string
   name: string
-  pricing_mode?: string
+}
+
+interface GlobalCountryCost {
+  country_code: string
+  country_name_en: string
+  country_name_zh: string | null
+  cost_per_bracket: BracketCost[]
+}
+
+interface GlobalCountryBracket {
+  country_code: string
+  country_name_en: string
+  country_name_zh: string | null
+  brackets: RateCardBracket[]
 }
 
 interface CostPricingFlowProps {
   onBack: () => void
 }
 
-const STEP_LABELS = ['選方案', '驗算比較', '設定加成', '微調價格', '確認儲存 / 匯出']
+const STEP_LABELS = ['選方案', '全球試算', '預覽價卡', '儲存匯出']
 
 export function CostPricingFlow({ onBack }: CostPricingFlowProps) {
   const t = useT()
-  const { country } = useCountry()
-  const supabase = createClient()
-
   const [step, setStep] = useState(0)
+
+  // Step 0
   const [scenarios, setScenarios] = useState<ScenarioOption[]>([])
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [scenarioCosts, setScenarioCosts] = useState<Record<string, BracketCost[]>>({})
-  const [scenarioModes, setScenarioModes] = useState<Record<string, string>>({})
+  const [selectedId, setSelectedId] = useState<string>('')
+  const [loadingScenarios, setLoadingScenarios] = useState(true)
 
-  // Step 2: markup config (integer percent, e.g. 20 = 20%)
+  // Step 1
+  const [globalCosts, setGlobalCosts] = useState<GlobalCountryCost[]>([])
+  const [computing, setComputing] = useState(false)
   const [targetMarginPct, setTargetMarginPct] = useState(15)
-  const targetMargin = targetMarginPct / 100
-  const [primaryScenarioId, setPrimaryScenarioId] = useState<string>('')
-  const [useCustomBrackets, setUseCustomBrackets] = useState(false)
-  const [customBrackets, setCustomBrackets] = useState<WeightPoint[]>([...UNIFIED_WEIGHT_POINTS])
 
-  // Step 3: generated brackets (editable)
-  const [brackets, setBrackets] = useState<RateCardBracket[]>([])
+  // Step 2
+  const [generatedCountries, setGeneratedCountries] = useState<GlobalCountryBracket[]>([])
+  const [expandedCountry, setExpandedCountry] = useState<string | null>(null)
 
-  // Step 4: save state
-  const [cardName, setCardName] = useState('')
+  // Step 3
+  const [productName, setProductName] = useState('')
+  const [productCode, setProductCode] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedId, setSavedId] = useState<string | null>(null)
 
-  // Step 5: export currency
-  const [exportCurrency, setExportCurrency] = useState<ExportCurrency>('HKD')
-
-  // ── Load scenarios ──
   useEffect(() => {
-    if (!country) return
     const load = async () => {
-      const { data } = await supabase
-        .from('scenarios')
-        .select('id, name, pricing_mode')
-        .eq('country_code', country)
-        .order('created_at', { ascending: false })
-      setScenarios(data ?? [])
+      setLoadingScenarios(true)
+      const res = await fetch('/api/scenarios')
+      if (res.ok) {
+        const data = await res.json()
+        setScenarios(data ?? [])
+      }
+      setLoadingScenarios(false)
     }
     load()
-  }, [country])
-
-  const toggleScenario = useCallback((id: string) => {
-    setSelectedIds(prev => {
-      if (prev.includes(id)) return prev.filter(x => x !== id)
-      if (prev.length >= 4) return prev
-      return [...prev, id]
-    })
   }, [])
 
-  // ── Compute costs for selected scenarios ──
-  const computeSelectedCosts = useCallback(async () => {
-    if (selectedIds.length === 0) return
-    setLoading(true)
-    const costs: Record<string, BracketCost[]> = {}
-    const modes: Record<string, string> = {}
-    for (const id of selectedIds) {
-      if (scenarioCosts[id]) {
-        costs[id] = scenarioCosts[id]
-        modes[id] = scenarioModes[id]
-        continue
-      }
-      try {
-        // Preview at UNIFIED_WEIGHT_POINTS (24 points) so every display weight
-        // gets an exact full computation — avoids D段 weight_bracket / first_additional
-        // interpolation errors that come from scaling between 6-point representatives.
-        const scRes = await fetch(`/api/scenarios/${id}`)
-        if (!scRes.ok) continue
-        const sc = await scRes.json()
-        const prevRes = await fetch('/api/scenarios/preview', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...sc, weights: UNIFIED_WEIGHT_POINTS }),
-        })
-        if (prevRes.ok) {
-          const data = await prevRes.json()
-          costs[id] = data.cost_per_bracket ?? []
-          modes[id] = data.assumptions?.pricing_mode ?? sc.pricing_mode ?? 'segmented'
-        }
-      } catch {
-        // skip failed
-      }
-    }
-    setScenarioCosts(prev => ({ ...prev, ...costs }))
-    setScenarioModes(prev => ({ ...prev, ...modes }))
-    setLoading(false)
-  }, [selectedIds])
-
-  // ── Build data sources for UnifiedVerificationTable ──
-  const sources: ScenarioSource[] = useMemo(() => {
-    return selectedIds
-      .filter(id => scenarioCosts[id])
-      .map(id => {
-        const sc = scenarios.find(s => s.id === id)
-        return {
-          type: 'scenario' as const,
-          id,
-          label: sc?.name ?? id.slice(0, 8),
-          costs: scenarioCosts[id],
-          pricingMode: scenarioModes[id],
-        }
+  const handleComputeGlobal = useCallback(async () => {
+    if (!selectedId) return
+    setComputing(true)
+    try {
+      const res = await fetch('/api/scenarios/compute-global', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario_id: selectedId }),
       })
-  }, [selectedIds, scenarioCosts, scenarioModes, scenarios])
-
-  // ── Avg margin ──
-  const avgMargin = useMemo(() => {
-    if (brackets.length === 0) return 0
-    return brackets.reduce((s, b) => s + b.actual_margin, 0) / brackets.length
-  }, [brackets])
-
-  // ── Step navigation with side effects ──
-  const handleStepChange = useCallback(async (newStep: number) => {
-    if (newStep === 1 && step === 0) {
-      await computeSelectedCosts()
-    }
-    if (newStep === 2 && step === 1) {
-      // Default primary to first selected with costs; do NOT auto-generate brackets
-      const pid = selectedIds.find(id => scenarioCosts[id])
-      if (pid && !primaryScenarioId) {
-        setPrimaryScenarioId(pid)
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? '試算失敗')
       }
+      const data = await res.json()
+      setGlobalCosts(data.countries ?? [])
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '試算失敗')
+    } finally {
+      setComputing(false)
     }
-    setStep(newStep)
-  }, [step, selectedIds, computeSelectedCosts, scenarioCosts, primaryScenarioId])
+  }, [selectedId])
 
-  // ── Generate brackets ──
   const handleGenerate = useCallback(() => {
-    const id = primaryScenarioId || selectedIds.find(id => scenarioCosts[id])
-    if (!id || !scenarioCosts[id]) return
-    const costs = scenarioCosts[id]
+    const margin = targetMarginPct / 100
+    const generated = globalCosts.map((c) => ({
+      country_code: c.country_code,
+      country_name_en: c.country_name_en,
+      country_name_zh: c.country_name_zh,
+      brackets: generateRateCardFromScenario(c.cost_per_bracket, margin),
+    }))
+    setGeneratedCountries(generated)
+    setStep(2)
+  }, [globalCosts, targetMarginPct])
 
-    if (useCustomBrackets && customBrackets.length > 0) {
-      // Build BracketCost[] from custom brackets by interpolating scenario costs
-      const customCosts: BracketCost[] = customBrackets.map(bp => {
-        const result = computeScenarioCostAtWeight(bp.representative, costs)
-        return {
-          weight_range: bp.range,
-          weight_min_kg: bp.min,
-          weight_max_kg: bp.max,
-          representative_weight_kg: bp.representative,
-          cost_hkd: result.cost,
-          seg_a: result.segA,
-          seg_b: result.segB,
-          seg_c: result.segC,
-          seg_d: result.segD,
-          seg_bc: result.segBC,
-          seg_b2: result.segB2,
-          seg_b2c: result.segB2C,
-        }
-      })
-      setBrackets(generateRateCardFromScenario(customCosts, targetMargin))
-    } else {
-      setBrackets(generateRateCardFromScenario(costs, targetMargin))
-    }
-  }, [primaryScenarioId, selectedIds, scenarioCosts, targetMargin, useCustomBrackets, customBrackets])
-
-  // ── Save rate card ──
   const handleSave = useCallback(async () => {
-    if (!brackets.length || !cardName.trim()) return
+    if (!productName.trim() || !generatedCountries.length) return
     setSaving(true)
     try {
+      const countryBracketsPayload = generatedCountries.map((c) => ({
+        country_code: c.country_code,
+        country_name_en: c.country_name_en,
+        country_name_zh: c.country_name_zh,
+        brackets: c.brackets.map((b): ApiCountryBracket => ({
+          weight_min: b.weight_min_kg,
+          weight_max: b.weight_max_kg,
+          rate_per_kg: b.freight_rate_hkd_per_kg,
+          reg_fee: b.reg_fee_hkd,
+          cost_hkd: b.cost_hkd,
+        })),
+      }))
+
       const res = await fetch('/api/rate-cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: cardName.trim(),
-          product_type: 'economy',
-          target_margin: targetMargin,
-          brackets,
-          scenario_id: primaryScenarioId || selectedIds[0],
-          country_code: country,
+          product_name: productName.trim(),
+          product_code: productCode.trim() || undefined,
+          scenario_id: selectedId,
+          source: 'scenario',
+          country_brackets: countryBracketsPayload,
         }),
       })
+
       if (!res.ok) throw new Error()
       const data = await res.json()
       setSavedId(data.id)
-      toast.success('價卡已儲存')
+      toast.success(`已儲存「${productName}」v${data.version}，涵蓋 ${data.country_count} 個國家`)
     } catch {
-      toast.error(t.common.saveFailed)
+      toast.error('儲存失敗')
     } finally {
       setSaving(false)
     }
-  }, [brackets, cardName, targetMargin, primaryScenarioId, selectedIds, country, t])
+  }, [productName, productCode, selectedId, generatedCountries])
 
-  // ── Export Excel ──
-  const handleExport = useCallback(() => {
-    if (!brackets.length) return
-    const r = DEFAULT_EXCHANGE_RATES
-    const mul = exportCurrency === 'HKD' ? 1
-      : exportCurrency === 'RMB' ? r.hkd_rmb
-      : exportCurrency === 'USD' ? 1 / r.usd_hkd
-      : 1 / (r.jpy_hkd ?? 0.052)
-    exportRateCardToExcel(
-      { name: cardName || 'Cost Rate Card', product_type: 'economy', target_margin: targetMargin, brackets },
-      exportCurrency,
-      mul,
-    )
-    toast.success('Excel 已下載')
-  }, [brackets, cardName, targetMargin, exportCurrency])
+  // Preview: find representative prices for key weights in each country
+  const previewWeights = [0.5, 1, 2, 5]
+  const getPreviewPrice = (brackets: RateCardBracket[], kg: number) => {
+    const b = brackets.find((br) => kg > br.weight_min_kg && kg <= br.weight_max_kg)
+      ?? brackets[brackets.length - 1]
+    if (!b) return null
+    return Math.ceil(b.freight_rate_hkd_per_kg * kg + b.reg_fee_hkd)
+  }
+
+  // Avg margin across all countries
+  const avgMargin = useMemo(() => {
+    if (!generatedCountries.length) return 0
+    let total = 0, count = 0
+    for (const c of generatedCountries) {
+      for (const b of c.brackets) {
+        total += b.actual_margin
+        count++
+      }
+    }
+    return count > 0 ? total / count : 0
+  }, [generatedCountries])
+
+  const canProceed = (
+    step === 0 ? !!selectedId :
+    step === 1 ? globalCosts.length > 0 :
+    step === 2 ? generatedCountries.length > 0 :
+    !!productName.trim()
+  )
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -253,289 +184,347 @@ export function CostPricingFlow({ onBack }: CostPricingFlowProps) {
         <Button variant="ghost" size="sm" onClick={onBack}>
           ← {t.common.back}
         </Button>
-        <h2 className="text-xl font-bold">A. 成本定價</h2>
-        <span className="text-sm text-muted-foreground">{country}</span>
+        <h2 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)' }}>
+          A. 成本定價
+        </h2>
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Globe className="h-3 w-3" /> 全球模式
+        </span>
       </div>
 
       <FlowStepper
         steps={STEP_LABELS}
         currentStep={step}
-        onStepChange={handleStepChange}
-        canProceed={
-          step === 0 ? selectedIds.length > 0 :
-          step === 1 ? sources.length > 0 :
-          step === 2 ? brackets.length > 0 :
-          step === 3 ? brackets.length > 0 :
-          true
-        }
+        onStepChange={(s) => {
+          if (s < step) setStep(s)
+        }}
+        canProceed={canProceed}
         finishLabel="完成"
         onFinish={onBack}
       />
 
-      {/* ── Step 0: Select scenarios ── */}
+      {/* ── Step 0: Select scenario ── */}
       {step === 0 && (
         <Card>
-          <CardContent className="pt-6 space-y-4">
+          <CardHeader>
+            <CardTitle className="text-base">選擇成本方案</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              選擇最多 4 個成本方案進行比較（已選 {selectedIds.length}/4）
+              選擇一個 bc_combined 方案，系統會自動讀取 D 段供應商的全球費率進行試算。
             </p>
-            {scenarios.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">
-                {country} 尚無成本方案，請先到「成本方案生成」建立
+            {loadingScenarios ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                <Loader2 className="h-4 w-4 animate-spin" /> 載入中…
+              </div>
+            ) : scenarios.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                尚無成本方案，請先到「方案分析」建立
               </p>
             ) : (
               <div className="grid gap-2">
-                {scenarios.map(sc => {
-                  const isSelected = selectedIds.includes(sc.id)
+                {scenarios.map((sc) => {
+                  const isSelected = selectedId === sc.id
                   return (
                     <button
                       key={sc.id}
                       type="button"
-                      onClick={() => toggleScenario(sc.id)}
-                      className={`
-                        flex items-center justify-between px-4 py-3 rounded-md border text-left text-sm transition-colors
-                        ${isSelected
-                          ? 'border-[#FF6B00] bg-[#FF6B00]/5 text-[#FF6B00]'
+                      onClick={() => setSelectedId(sc.id)}
+                      className={`flex items-center justify-between px-4 py-3 rounded-md border text-left text-sm transition-colors ${
+                        isSelected
+                          ? 'border-[#0284C7] bg-[#0284C7]/5 text-[#0284C7]'
                           : 'border-border hover:border-muted-foreground/30'
-                        }
-                        ${!isSelected && selectedIds.length >= 4 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                      `}
-                      disabled={!isSelected && selectedIds.length >= 4}
+                      }`}
                     >
                       <span className="font-medium">{sc.name}</span>
-                      {sc.pricing_mode && (
-                        <span className="text-xs text-muted-foreground">{sc.pricing_mode}</span>
-                      )}
+                      {isSelected && <CheckCircle2 className="h-4 w-4 text-[#0284C7]" />}
                     </button>
                   )
                 })}
               </div>
             )}
+            <div className="pt-2 flex justify-end">
+              <Button
+                disabled={!selectedId}
+                onClick={() => setStep(1)}
+              >
+                下一步
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* ── Step 1: Multi-scenario verification ── */}
+      {/* ── Step 1: Global compute + margin config ── */}
       {step === 1 && (
         <div className="space-y-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-[#FF6B00]" />
-              <span className="ml-2 text-sm text-muted-foreground">計算成本中...</span>
-            </div>
-          ) : sources.length > 0 ? (
-            <UnifiedVerificationTable
-              sources={sources}
-              highlightCheapest
-              compareBy="cost"
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-12">
-              無法取得方案成本數據
-            </p>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">全球成本試算</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {globalCosts.length === 0 ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    系統將逐一計算 D 段供應商所有目的國的 A+BC+D 完整成本。
+                  </p>
+                  <Button
+                    onClick={handleComputeGlobal}
+                    disabled={computing}
+                    className="gap-2"
+                  >
+                    {computing && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {computing ? '試算中…' : '開始試算'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-green-700">
+                    <CheckCircle2 className="h-4 w-4" />
+                    已完成 {globalCosts.length} 個國家的成本試算
+                  </div>
+                  {/* Cost summary table */}
+                  <div className="overflow-auto max-h-64 rounded border text-xs">
+                    <table className="w-full data-table">
+                      <thead className="sticky top-0 bg-muted/80">
+                        <tr>
+                          <th className="px-3 py-2 text-left">國家</th>
+                          {globalCosts[0]?.cost_per_bracket.slice(0, 4).map((b) => (
+                            <th key={b.weight_range} className="px-3 py-2 text-right">
+                              {b.representative_weight_kg}kg 成本
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {globalCosts.map((c) => (
+                          <tr key={c.country_code} className="border-t">
+                            <td className="px-3 py-1.5 font-medium">
+                              {c.country_name_en}
+                              {c.country_name_zh && (
+                                <span className="text-muted-foreground ml-1">({c.country_name_zh})</span>
+                              )}
+                            </td>
+                            {c.cost_per_bracket.slice(0, 4).map((b) => (
+                              <td key={b.weight_range} className="px-3 py-1.5 text-right tabular-nums">
+                                {b.cost_hkd.toFixed(1)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {globalCosts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">設定全球加成</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-end gap-4">
+                  <div className="space-y-1.5">
+                    <Label>目標毛利率 (%)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={99}
+                        value={targetMarginPct}
+                        onChange={(e) => setTargetMarginPct(Math.max(0, Math.min(99, parseInt(e.target.value) || 0)))}
+                        className="w-24"
+                      />
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                  </div>
+                  <Button onClick={handleGenerate}>
+                    生成全球價卡 →
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  套用統一毛利率後可在下一步逐國檢視，暫不支援逐國微調。
+                </p>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
 
-      {/* ── Step 2: Set markup ── */}
+      {/* ── Step 2: Preview all countries ── */}
       {step === 2 && (
-        <Card>
-          <CardContent className="pt-6 space-y-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Label className="shrink-0 whitespace-nowrap">目標毛利率</Label>
-                <div className="relative w-28">
-                  <Input
-                    type="number"
-                    step={1}
-                    min={0}
-                    max={99}
-                    value={targetMarginPct}
-                    onChange={e => setTargetMarginPct(parseFloat(e.target.value) || 0)}
-                    className="pr-8 text-right tabular-nums"
-                  />
-                  <span className="pointer-events-none select-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                    %
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label>基於方案</Label>
-                <Select
-                  value={primaryScenarioId}
-                  onValueChange={setPrimaryScenarioId}
-                >
-                  <SelectTrigger className="w-56">
-                    <SelectValue placeholder="選擇方案" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectedIds.filter(id => scenarioCosts[id]).map(id => {
-                      const sc = scenarios.find(s => s.id === id)
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                全球價卡預覽 — {generatedCountries.length} 個國家 ·
+                均毛利 {(avgMargin * 100).toFixed(1)}% ·
+                加成 {targetMarginPct}%
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-auto rounded border text-xs">
+                <table className="w-full data-table">
+                  <thead className="sticky top-0 bg-muted/80">
+                    <tr>
+                      <th className="px-3 py-2 text-left w-48">國家</th>
+                      {previewWeights.map((kg) => (
+                        <th key={kg} className="px-3 py-2 text-right">
+                          {kg}kg 總價
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-right">掛號費</th>
+                      <th className="px-2 py-2 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {generatedCountries.map((c) => {
+                      const isExpanded = expandedCountry === c.country_code
+                      const regFee = c.brackets[0]?.reg_fee_hkd ?? 0
                       return (
-                        <SelectItem key={id} value={id}>{sc?.name ?? id.slice(0, 8)}</SelectItem>
+                        <>
+                          <tr
+                            key={c.country_code}
+                            className="border-t hover:bg-muted/30 cursor-pointer"
+                            onClick={() => setExpandedCountry(isExpanded ? null : c.country_code)}
+                          >
+                            <td className="px-3 py-2 font-medium">
+                              {c.country_name_en}
+                              {c.country_name_zh && (
+                                <span className="text-muted-foreground ml-1 text-[10px]">
+                                  {c.country_name_zh}
+                                </span>
+                              )}
+                            </td>
+                            {previewWeights.map((kg) => (
+                              <td key={kg} className="px-3 py-2 text-right tabular-nums">
+                                {getPreviewPrice(c.brackets, kg) ?? '—'}
+                              </td>
+                            ))}
+                            <td className="px-3 py-2 text-right tabular-nums">{regFee}</td>
+                            <td className="px-2 py-2 text-muted-foreground">
+                              {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr key={`${c.country_code}-detail`} className="bg-muted/20">
+                              <td colSpan={previewWeights.length + 3} className="px-4 pb-3">
+                                <table className="w-full text-[11px] mt-2">
+                                  <thead>
+                                    <tr className="text-muted-foreground">
+                                      <th className="text-left py-1">重量段</th>
+                                      <th className="text-right py-1">售價/kg</th>
+                                      <th className="text-right py-1">掛號費</th>
+                                      <th className="text-right py-1">成本</th>
+                                      <th className="text-right py-1">毛利率</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {c.brackets.map((b) => (
+                                      <tr key={b.weight_range} className="border-t border-muted/40">
+                                        <td className="py-1">{b.weight_range}</td>
+                                        <td className="text-right tabular-nums">{b.freight_rate_hkd_per_kg}</td>
+                                        <td className="text-right tabular-nums">{b.reg_fee_hkd}</td>
+                                        <td className="text-right tabular-nums text-muted-foreground">
+                                          {b.cost_hkd.toFixed(1)}
+                                        </td>
+                                        <td className="text-right tabular-nums">
+                                          {(b.actual_margin * 100).toFixed(1)}%
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          )}
+                        </>
                       )
                     })}
-                  </SelectContent>
-                </Select>
+                  </tbody>
+                </table>
               </div>
-            </div>
-
-            {/* Custom bracket toggle + editor */}
-            <div className="space-y-3 border rounded-md p-4">
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input
-                    type="checkbox"
-                    checked={useCustomBrackets}
-                    onChange={e => setUseCustomBrackets(e.target.checked)}
-                    className="rounded border-gray-300"
-                  />
-                  自定義重量區間
-                </label>
-                {!useCustomBrackets && (
-                  <span className="text-xs text-muted-foreground">
-                    使用方案預設區間（{primaryScenarioId && scenarioCosts[primaryScenarioId]
-                      ? scenarioCosts[primaryScenarioId].length
-                      : '—'} 段）
-                  </span>
-                )}
-                {useCustomBrackets && (
-                  <span className="text-xs text-muted-foreground">
-                    {customBrackets.length} 個自定義區間
-                  </span>
-                )}
-              </div>
-              {useCustomBrackets && (
-                <BracketEditor brackets={customBrackets} onChange={setCustomBrackets} />
-              )}
-            </div>
-
-            <Button
-              size="sm"
-              className="bg-[#FF6B00] hover:bg-[#FF6B00]/90 text-white"
-              onClick={handleGenerate}
-            >
-              生成價格
+            </CardContent>
+          </Card>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setStep(1)}>
+              ← 返回調整加成
             </Button>
-
-            {brackets.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="text-muted-foreground">已生成 {brackets.length} 個重量段</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-mono ${getMarginColorClass(avgMargin)}`}>
-                    平均毛利 {(avgMargin * 100).toFixed(1)}%
-                  </span>
-                </div>
-                <RateCardTable brackets={brackets} onBracketsChange={setBrackets} />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Step 3: Fine-tune prices (with live verification) ── */}
-      {step === 3 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              逐段微調運費、掛號費、或直接輸入目標毛利%
-            </span>
-            <span className={`px-2 py-0.5 rounded text-xs font-mono ${getMarginColorClass(avgMargin)}`}>
-              平均毛利 {(avgMargin * 100).toFixed(1)}%
-            </span>
+            <Button onClick={() => setStep(3)}>
+              下一步：儲存 →
+            </Button>
           </div>
-          <RateCardTable brackets={brackets} onBracketsChange={setBrackets} />
-
-          {brackets.length > 0 && sources.length > 0 && (
-            <div className="space-y-2 border-t pt-4">
-              <p className="text-sm font-medium">實時驗算 — 成本 vs 新價格</p>
-              <p className="text-xs text-muted-foreground">
-                調整上方的價格，下方表格會同步更新毛利與成本對比
-              </p>
-              <UnifiedVerificationTable
-                sources={[
-                  ...sources,
-                  {
-                    type: 'rate-card' as const,
-                    id: 'tuned',
-                    label: '微調後價卡',
-                    brackets,
-                  },
-                ]}
-                compareBy="cost"
-                enableMarginCompare
-              />
-            </div>
-          )}
         </div>
       )}
 
-      {/* ── Step 4: Confirm, save & export ── */}
-      {step === 4 && (
-        <Card>
-          <CardContent className="pt-6 space-y-6">
-            {/* Final rate card preview */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <h3 className="text-sm font-medium">最終價卡預覽</h3>
-                <span className="text-xs text-muted-foreground">
-                  {brackets.length} 段 · 平均毛利
-                </span>
-                <span className={`px-1.5 py-0.5 rounded text-xs font-mono ${getMarginColorClass(avgMargin)}`}>
-                  {(avgMargin * 100).toFixed(1)}%
-                </span>
-              </div>
-              <RateCardTable brackets={brackets} />
-            </div>
+      {/* ── Step 3: Save + export ── */}
+      {step === 3 && (
+        <div className="space-y-4 max-w-xl">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">儲存全球價卡</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {savedId ? (
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span>儲存成功！價卡 ID: {savedId}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>產品名稱 *</Label>
+                      <Input
+                        placeholder="e.g. RH 全球小包 Q2 2026"
+                        value={productName}
+                        onChange={(e) => setProductName(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>
+                        產品代號{' '}
+                        <span className="text-muted-foreground text-xs">(選填，留空自動生成)</span>
+                      </Label>
+                      <Input
+                        placeholder="e.g. RH-GLOBAL-Q2-2026"
+                        value={productCode}
+                        onChange={(e) => setProductCode(e.target.value.toUpperCase())}
+                      />
+                    </div>
+                  </div>
 
-            {/* Save + Export row */}
-            <div className="border-t pt-4 space-y-3">
-              <div className="flex items-center gap-3 flex-wrap">
-                <Label>價卡名稱</Label>
-                <Input
-                  value={cardName}
-                  onChange={e => setCardName(e.target.value)}
-                  placeholder={`${country} 成本定價 ${new Date().toISOString().slice(0, 10)}`}
-                  className="w-80"
-                  disabled={!!savedId}
-                />
-                {savedId && <CheckCircle2 className="h-4 w-4 text-green-500" />}
-              </div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <Button
-                  className="bg-[#FF6B00] hover:bg-[#FF6B00]/90 text-white"
-                  onClick={handleSave}
-                  disabled={saving || !cardName.trim() || !!savedId}
-                >
-                  {saving ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />儲存中...</>
-                  ) : savedId ? '已儲存' : '確認儲存'}
-                </Button>
-                <span className="text-sm text-muted-foreground">|</span>
-                <Label>匯出</Label>
-                <Select value={exportCurrency} onValueChange={v => setExportCurrency(v as ExportCurrency)}>
-                  <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="HKD">HKD</SelectItem>
-                    <SelectItem value="RMB">RMB</SelectItem>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="JPY">JPY</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  onClick={handleExport}
-                  disabled={!brackets.length}
-                >
-                  下載 Excel
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                此價卡可在「競價定價」(B 路徑) 中作為對標目標使用
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+                  <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-1">
+                    <p>
+                      <span className="text-muted-foreground">國家數：</span>
+                      {generatedCountries.length}
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">均毛利率：</span>
+                      {(avgMargin * 100).toFixed(1)}%
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">設定加成：</span>
+                      {targetMarginPct}%
+                    </p>
+                  </div>
+
+                  <Button
+                    className="w-full"
+                    disabled={saving || !productName.trim()}
+                    onClick={handleSave}
+                  >
+                    {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                    {saving ? '儲存中…' : '確認儲存'}
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   )

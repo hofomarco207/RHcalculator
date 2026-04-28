@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server'
 
 /** PATCH — update competitor rate card fields (e.g. fuel_surcharge_pct) */
 export async function PATCH(
@@ -9,7 +9,7 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await request.json()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const updateFields: Record<string, unknown> = {}
     if (body.fuel_surcharge_pct !== undefined) {

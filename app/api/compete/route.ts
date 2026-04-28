@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
       price_unit,
       scenario_id,
       adjustment_pct,
+      country_code,
       manual_overrides,
       weight_distribution,
     } = body
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       competitorPrices: competitor_prices,
       priceUnit: price_unit,
       adjustmentPct: adjustment_pct ?? 0,
+      countryCode: country_code ?? '',
       manualOverrides: manual_overrides,
       weightDistribution: weight_distribution,
     })

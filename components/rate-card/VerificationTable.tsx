@@ -19,8 +19,6 @@ import {
   scenarioSegCTooltip,
   scenarioSegDTooltip,
   scenarioSegBCTooltip,
-  scenarioSegB2Tooltip,
-  scenarioSegB2CTooltip,
 } from './CostTooltip'
 
 const PAGE_SIZE = 20
@@ -51,25 +49,9 @@ export function VerificationTable({ brackets, productType, scenarioCosts, pricin
 
   const isBCDCombined = pricingMode === 'bcd_combined'
 
-  const isMultiB = useMemo(() => {
-    if (pricingMode) return pricingMode === 'multi_b'
-    if (!scenarioCosts) return false
-    return scenarioCosts.some((c) => c.detail?.seg_b2 != null)
-  }, [scenarioCosts, pricingMode])
-
-  const isMultiBB2C = useMemo(() => {
-    if (pricingMode) return pricingMode === 'multi_b_b2c'
-    if (!scenarioCosts) return false
-    return scenarioCosts.some((c) => c.detail?.seg_b2c != null)
-  }, [scenarioCosts, pricingMode])
-
-  const isMultiLeg = isMultiB || isMultiBB2C
-
   const resolvedMode: PricingMode =
     pricingMode ??
     (isBCDCombined ? 'bcd_combined'
-      : isMultiBB2C ? 'multi_b_b2c'
-      : isMultiB ? 'multi_b'
       : isBCCombined ? 'bc_combined'
       : 'segmented')
 
@@ -98,8 +80,6 @@ export function VerificationTable({ brackets, productType, scenarioCosts, pricin
             segC: exactMatch.seg_c,
             segD: exactMatch.seg_d,
             segBC: exactMatch.seg_bc ?? 0,
-            segB2: exactMatch.seg_b2 ?? 0,
-            segB2C: exactMatch.seg_b2c ?? 0,
             totalCost,
             detail: exactMatch.detail ?? null,
             freightRate,
@@ -154,36 +134,12 @@ export function VerificationTable({ brackets, productType, scenarioCosts, pricin
         let actualSegBC = 0
         if (detail?.seg_bc) {
           const bc = detail.seg_bc
-          const bcBubble = bc.bubble_ratio ?? 1.0
-          const costInCurrency = bc.rate_per_kg * w.kg * bcBubble + bc.handling_fee
+          const costInCurrency = bc.rate_per_kg * w.kg * (1 + (bc.fuel_surcharge_pct ?? 0) / 100)
           actualSegBC = costInCurrency * bc.exchange_rate_to_hkd
         } else if (sc && (sc.seg_bc ?? 0) > 0 && repW > 0) {
           // Approximate: BC has per-kg + fixed handling. Scale per-kg part, keep handling
           // Since we can't separate them here, do proportional scaling
           actualSegBC = (sc.seg_bc! / repW) * w.kg
-        }
-
-        // B2段 (multi_b)
-        let actualSegB2 = 0
-        if (detail?.seg_b2 && detail.seg_b2.gateways.length > 0) {
-          for (const gw of detail.seg_b2.gateways) {
-            const perKgCost = gw.rate_per_kg * w.kg * gw.bubble_rate
-            const bPerTicket = perKgCost + gw.mawb_amortized
-            actualSegB2 += bPerTicket * gw.proportion
-          }
-        } else if (sc && repW > 0 && (sc.seg_b2 ?? 0) > 0) {
-          actualSegB2 = (sc.seg_b2! / repW) * w.kg
-        }
-
-        // B2C段 (multi_b_b2c)
-        let actualSegB2C = 0
-        if (detail?.seg_b2c) {
-          const b2c = detail.seg_b2c
-          const b2cBubble = b2c.bubble_ratio ?? 1.0
-          const costInCurrency = b2c.rate_per_kg * w.kg * b2cBubble + b2c.handling_fee
-          actualSegB2C = costInCurrency * b2c.exchange_rate_to_hkd
-        } else if (sc && repW > 0 && (sc.seg_b2c ?? 0) > 0) {
-          actualSegB2C = (sc.seg_b2c! / repW) * w.kg
         }
 
         // D段
@@ -254,7 +210,7 @@ export function VerificationTable({ brackets, productType, scenarioCosts, pricin
           actualSegD = dPerKg * w.kg
         }
 
-        const totalCost = actualSegA + actualSegB + actualSegC + actualSegBC + actualSegB2 + actualSegB2C + actualSegD
+        const totalCost = actualSegA + actualSegB + actualSegC + actualSegBC + actualSegD
         const margin = revenue > 0 ? (revenue - totalCost) / revenue : 0
 
         return {
@@ -266,8 +222,6 @@ export function VerificationTable({ brackets, productType, scenarioCosts, pricin
           segC: actualSegC,
           segD: actualSegD,
           segBC: actualSegBC,
-          segB2: actualSegB2,
-          segB2C: actualSegB2C,
           totalCost,
           detail: detail ?? null,
           freightRate,
@@ -288,8 +242,6 @@ export function VerificationTable({ brackets, productType, scenarioCosts, pricin
         segC: 0,
         segD: 0,
         segBC: 0,
-        segB2: 0,
-        segB2C: 0,
         totalCost: 0,
         detail: null,
         freightRate,
@@ -333,33 +285,6 @@ export function VerificationTable({ brackets, productType, scenarioCosts, pricin
                     {t.segments.d} {t.verification.cost}
                   </th>
                 </>
-              ) : isMultiB ? (
-                <>
-                  <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">
-                    {t.segments.b1} {t.verification.cost}
-                  </th>
-                  <th className="px-3 py-2.5 text-center font-medium text-sky-500 whitespace-nowrap">
-                    {t.segments.b2} {t.verification.cost}
-                  </th>
-                  <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">
-                    {t.segments.c} {t.verification.cost}
-                  </th>
-                  <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">
-                    {t.segments.d} {t.verification.cost}
-                  </th>
-                </>
-              ) : isMultiBB2C ? (
-                <>
-                  <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">
-                    {t.segments.b1} {t.verification.cost}
-                  </th>
-                  <th className="px-3 py-2.5 text-center font-medium text-teal-500 whitespace-nowrap">
-                    {t.segments.b2c} {t.verification.cost}
-                  </th>
-                  <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">
-                    {t.segments.d} {t.verification.cost}
-                  </th>
-                </>
               ) : (
                 <>
                   <th className="px-3 py-2.5 text-center font-medium text-blue-500 whitespace-nowrap">
@@ -398,8 +323,6 @@ export function VerificationTable({ brackets, productType, scenarioCosts, pricin
                 seg_c: row.segC,
                 seg_d: row.segD,
                 seg_bc: row.segBC,
-                seg_b2: row.segB2,
-                seg_b2c: row.segB2C,
               }
               const bad = row.isScenarioBased ? new Set(invalidSegments(costs, resolvedMode)) : new Set<string>()
               const valid = row.isScenarioBased ? isCostValid(costs, resolvedMode) : true
@@ -465,103 +388,6 @@ export function VerificationTable({ brackets, productType, scenarioCosts, pricin
                       >
                         <span className={flagUnderline('seg_bc')}>
                           {row.segBC.toFixed(2)}
-                        </span>
-                      </CostTooltip>
-                    </td>
-                    {/* D段 */}
-                    <td className={`px-3 py-1.5 text-center font-mono text-xs ${flag('seg_d')}`}>
-                      <CostTooltip
-                        content={row.detail
-                          ? scenarioSegDTooltip(row.detail.seg_d, row.segD)
-                          : segDTooltip([], 0, 0, row.segD)
-                        }
-                      >
-                        <span className={flagUnderline('seg_d')}>
-                          {row.segD.toFixed(2)}
-                        </span>
-                      </CostTooltip>
-                    </td>
-                  </>
-                ) : isMultiB ? (
-                  <>
-                    {/* B1段 */}
-                    <td className={`px-3 py-1.5 text-center font-mono text-xs ${flag('seg_b')}`}>
-                      <CostTooltip
-                        content={row.detail
-                          ? scenarioSegBTooltip(row.detail.seg_b, row.segB, `${t.segments.b1} ${t.segments.bDesc}`)
-                          : segBTooltip(row.kg, 0, row.segB)
-                        }
-                      >
-                        <span className={flagUnderline('seg_b')}>
-                          {row.segB.toFixed(2)}
-                        </span>
-                      </CostTooltip>
-                    </td>
-                    {/* B2段 */}
-                    <td className={`px-3 py-1.5 text-center font-mono text-xs ${flag('seg_b2')}`}>
-                      <CostTooltip
-                        content={row.detail?.seg_b2
-                          ? scenarioSegB2Tooltip(row.detail.seg_b2, row.segB2)
-                          : <><span className="text-blue-400 font-semibold">{t.segments.b2} {t.segments.bDesc}</span>{'\n'}<span className="text-amber-400">= {row.segB2.toFixed(2)} HKD</span></>
-                        }
-                      >
-                        <span className={flagUnderline('seg_b2')}>
-                          {row.segB2.toFixed(2)}
-                        </span>
-                      </CostTooltip>
-                    </td>
-                    {/* C段 */}
-                    <td className={`px-3 py-1.5 text-center font-mono text-xs ${flag('seg_c')}`}>
-                      <CostTooltip
-                        content={row.detail
-                          ? scenarioSegCTooltip(row.detail.seg_c, row.segC)
-                          : segCTooltip(0, 0, 0, 0, row.segC)
-                        }
-                      >
-                        <span className={flagUnderline('seg_c')}>
-                          {row.segC.toFixed(2)}
-                        </span>
-                      </CostTooltip>
-                    </td>
-                    {/* D段 */}
-                    <td className={`px-3 py-1.5 text-center font-mono text-xs ${flag('seg_d')}`}>
-                      <CostTooltip
-                        content={row.detail
-                          ? scenarioSegDTooltip(row.detail.seg_d, row.segD)
-                          : segDTooltip([], 0, 0, row.segD)
-                        }
-                      >
-                        <span className={flagUnderline('seg_d')}>
-                          {row.segD.toFixed(2)}
-                        </span>
-                      </CostTooltip>
-                    </td>
-                  </>
-                ) : isMultiBB2C ? (
-                  <>
-                    {/* B1段 */}
-                    <td className={`px-3 py-1.5 text-center font-mono text-xs ${flag('seg_b')}`}>
-                      <CostTooltip
-                        content={row.detail
-                          ? scenarioSegBTooltip(row.detail.seg_b, row.segB, `${t.segments.b1} ${t.segments.bDesc}`)
-                          : segBTooltip(row.kg, 0, row.segB)
-                        }
-                      >
-                        <span className={flagUnderline('seg_b')}>
-                          {row.segB.toFixed(2)}
-                        </span>
-                      </CostTooltip>
-                    </td>
-                    {/* B2C段 */}
-                    <td className={`px-3 py-1.5 text-center font-mono text-xs ${flag('seg_b2c')}`}>
-                      <CostTooltip
-                        content={row.detail?.seg_b2c
-                          ? scenarioSegB2CTooltip(row.detail.seg_b2c, row.segB2C)
-                          : <><span className="text-teal-400 font-semibold">{t.segments.b2c} {t.segments.bcDesc}</span>{'\n'}<span className="text-amber-400">= {row.segB2C.toFixed(2)} HKD</span></>
-                        }
-                      >
-                        <span className={flagUnderline('seg_b2c')}>
-                          {row.segB2C.toFixed(2)}
                         </span>
                       </CostTooltip>
                     </td>

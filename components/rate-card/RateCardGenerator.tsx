@@ -575,7 +575,7 @@ export function RateCardGenerator() {
                       brackets={rateCard}
                       productType={productType}
                       scenarioCosts={verificationCosts ?? scenarioCosts ?? undefined}
-                      pricingMode={loadedScenario?.pricing_mode as 'segmented' | 'bc_combined' | 'bcd_combined' | 'multi_b' | 'multi_b_b2c' | undefined}
+                      pricingMode={loadedScenario?.pricing_mode}
                     />
                   )}
                 </div>

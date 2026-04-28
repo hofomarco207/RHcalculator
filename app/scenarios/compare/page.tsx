@@ -73,26 +73,6 @@ function buildCompareTooltip(bracket: BracketCost, pricingMode: string | null): 
           {'\n'}
           <span className="text-teal-400">BCD 全段:</span> {bracket.seg_d.toFixed(2)} HKD
         </>
-      ) : mode === 'multi_b' ? (
-        <>
-          {'\n'}
-          <span className="text-blue-400">B1段 空運:</span> {bracket.seg_b.toFixed(2)} HKD
-          {'\n'}
-          <span className="text-blue-400">B2段 空運:</span> {(bracket.seg_b2 ?? 0).toFixed(2)} HKD
-          {'\n'}
-          <span className="text-blue-400">C段 清關:</span> {bracket.seg_c.toFixed(2)} HKD
-          {'\n'}
-          <span className="text-blue-400">D段 尾程:</span> {bracket.seg_d.toFixed(2)} HKD
-        </>
-      ) : mode === 'multi_b_b2c' ? (
-        <>
-          {'\n'}
-          <span className="text-blue-400">B1段 空運:</span> {bracket.seg_b.toFixed(2)} HKD
-          {'\n'}
-          <span className="text-teal-400">B2C 空運+清關:</span> {(bracket.seg_b2c ?? 0).toFixed(2)} HKD
-          {'\n'}
-          <span className="text-blue-400">D段 尾程:</span> {bracket.seg_d.toFixed(2)} HKD
-        </>
       ) : (
         <>
           {'\n'}

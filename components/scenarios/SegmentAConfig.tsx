@@ -23,6 +23,7 @@ interface SegmentAConfigProps {
   sorting: number
   includeSorting: boolean
   bubbleRatio?: number
+  perKgCurrency?: string
   perPieceFee?: number
   perPieceCurrency?: string
   onChange: (v: {
@@ -30,6 +31,7 @@ interface SegmentAConfigProps {
     sorting: number
     includeSorting: boolean
     bubbleRatio?: number
+    perKgCurrency?: string
     perPieceFee?: number
     perPieceCurrency?: string
   }) => void
@@ -44,6 +46,7 @@ export function SegmentAConfig({
   sorting,
   includeSorting,
   bubbleRatio,
+  perKgCurrency,
   perPieceFee,
   perPieceCurrency,
   onChange,
@@ -65,8 +68,9 @@ export function SegmentAConfig({
         sorting: currentRate?.sorting_hkd_per_kg ?? 0,
         includeSorting: currentRate?.include_sorting ?? false,
         bubbleRatio: currentRate?.bubble_ratio ?? 1.0,
+        perKgCurrency: currentRate?.per_kg_currency ?? 'TWD',
         perPieceFee: vendorData.per_piece_fee ?? 0,
-        perPieceCurrency: vendorData.per_piece_currency ?? 'HKD',
+        perPieceCurrency: vendorData.per_piece_currency ?? 'TWD',
       })
     } catch {
       setRates([])
@@ -89,6 +93,7 @@ export function SegmentAConfig({
       sorting,
       includeSorting,
       bubbleRatio,
+      perKgCurrency,
       perPieceFee,
       perPieceCurrency,
       ...patch,
@@ -185,10 +190,11 @@ export function SegmentAConfig({
           >
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="TWD">TWD</SelectItem>
               <SelectItem value="HKD">HKD</SelectItem>
-              <SelectItem value="JPY">JPY</SelectItem>
               <SelectItem value="USD">USD</SelectItem>
               <SelectItem value="RMB">RMB</SelectItem>
+              <SelectItem value="JPY">JPY</SelectItem>
             </SelectContent>
           </Select>
         </div>
