@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { TabBar } from "@/components/layout/TabBar";
-import { TabContent } from "@/components/layout/TabContent";
-import { ClientProviders } from "@/components/layout/ClientProviders";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,8 +20,8 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "FlexForward 價格生成器",
-  description: "FlexForward Pricing Engine",
+  title: "RH 運費查詢",
+  description: "RH Logistics Rate Calculator",
 };
 
 export default function RootLayout({
@@ -35,17 +31,11 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="zh-TW"
       className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
-      <body className="h-screen flex flex-row overflow-hidden">
-        <ClientProviders>
-          <Sidebar />
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <TabBar />
-            <TabContent />
-          </div>
-        </ClientProviders>
+      <body className="min-h-screen bg-background text-foreground">
+        {children}
         <Toaster />
       </body>
     </html>

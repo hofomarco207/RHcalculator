@@ -4,12 +4,12 @@ import { Suspense, lazy } from 'react'
 import { useTab, type TabId } from '@/lib/context/tab-context'
 
 // Lazy-load each panel so we only download code when the tab is first opened
-const ScenariosPanel = lazy(() => import('@/app/scenarios/page'))
-const VendorsPanel = lazy(() => import('@/app/vendors/page'))
-const CompetitorPanel = lazy(() => import('@/app/competitor/page'))
-const RateCardPanel = lazy(() => import('@/app/rate-card/page'))
-const SettingsPanel = lazy(() => import('@/app/settings/page'))
-const ShipmentsPanel = lazy(() => import('@/app/data/shipments/page'))
+const ScenariosPanel = lazy(() => import('@/app/(admin)/scenarios/page'))
+const VendorsPanel = lazy(() => import('@/app/(admin)/vendors/page'))
+const CompetitorPanel = lazy(() => import('@/app/(admin)/competitor/page'))
+const RateCardPanel = lazy(() => import('@/app/(admin)/rate-card/page'))
+const SettingsPanel = lazy(() => import('@/app/(admin)/settings/page'))
+const ShipmentsPanel = lazy(() => import('@/app/(admin)/data/shipments/page'))
 const PricingFlowPanel = lazy(() => import('@/components/tabs/PricingFlowPanel'))
 const AdvancedAnalysisPanel = lazy(() => import('@/components/tabs/AdvancedAnalysisPanel'))
 const LibraryPanel = lazy(() => import('@/components/tabs/LibraryPanel'))
