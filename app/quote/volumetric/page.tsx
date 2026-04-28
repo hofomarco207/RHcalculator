@@ -7,7 +7,6 @@ interface PriceResult {
   volWeight: number
   billWeight: number
   pricePerTicket: number | null
-  pricePerMonth: number | null
   isApproximate: boolean
 }
 
@@ -31,14 +30,13 @@ function VolumetricForm() {
   const allFilled = length && width && height && weight && monthly
 
   useEffect(() => {
-    if (!allFilled || !productCode || !countryCode) return
+    if (!productCode || !countryCode) return
     const l = parseFloat(length), w = parseFloat(width), h = parseFloat(height)
-    const kg = parseFloat(weight), mo = parseFloat(monthly)
-    if ([l, w, h, kg, mo].some(isNaN) || mo <= 0) return
+    const kg = parseFloat(weight)
+    if (!length || !width || !height || !weight || [l, w, h, kg].some(isNaN)) return
 
     const volKg = Math.round((l * w * h / 5000) * 100) / 100
     const billKg = Math.max(kg, volKg)
-    // Round up to nearest 0.1
     const billKgRounded = Math.ceil(billKg * 10) / 10
 
     setLoading(true)
@@ -56,14 +54,13 @@ function VolumetricForm() {
           volWeight: volKg,
           billWeight: billKgRounded,
           pricePerTicket: price,
-          pricePerMonth: price != null ? Math.round(price * mo) : null,
           isApproximate,
         })
       })
       .catch(() => setError('查詢失敗，請稍後再試'))
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [length, width, height, weight, monthly])
+  }, [length, width, height, weight])
 
   const prefix = isApproximate ? '約 ' : ''
 
@@ -164,7 +161,11 @@ function VolumetricForm() {
               <div className="flex justify-between items-center border-t pt-3">
                 <span className="text-sm text-gray-600">預估每月運費</span>
                 <span className="text-xl font-bold text-blue-600 font-mono">
-                  {result.pricePerMonth == null ? '—' : `${prefix}TWD ${result.pricePerMonth.toLocaleString()}`}
+                  {(() => {
+                    const mo = parseFloat(monthly)
+                    if (result.pricePerTicket == null || isNaN(mo) || mo <= 0) return '—'
+                    return `${prefix}TWD ${Math.round(result.pricePerTicket * mo).toLocaleString()}`
+                  })()}
                 </span>
               </div>
             </div>
