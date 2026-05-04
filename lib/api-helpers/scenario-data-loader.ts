@@ -9,6 +9,26 @@ import type { WeightPoint, Vendor } from '@/types'
 import { DEFAULT_EXCHANGE_RATES, WEIGHT_BRACKETS } from '@/types'
 import type { VendorBCRate, VendorDRate, VendorDTieredRate, VendorDLookupRate, VendorDLookupAreaCountry } from '@/types/vendor'
 
+// Map common country names to ISO codes (mirrors the importer + pricing-flow utils).
+// Used to infer an ISO code when competitor cards have country_code=null.
+const COUNTRY_NAME_TO_ISO: Record<string, string> = {
+  'United States': 'US', 'United Kingdom': 'GB', 'United Kindgom': 'GB',
+  'France': 'FR', 'Germany': 'DE', 'Italy': 'IT', 'Spain': 'ES',
+  'Netherlands': 'NL', 'Belgium': 'BE', 'Luxembourg': 'LU', 'Ireland': 'IE',
+  'Portugal': 'PT', 'Denmark': 'DK', 'Sweden': 'SE', 'Norway': 'NO',
+  'Finland': 'FI', 'Switzerland': 'CH', 'Canada': 'CA', 'Singapore': 'SG',
+  'New Zealand': 'NZ', 'Greece': 'GR', 'Israel': 'IL', 'Australia': 'AU',
+  'United Arab Emirates': 'AE', 'Saudi Arabia': 'SA', 'Austria': 'AT',
+  'Bulgaria': 'BG', 'Croatia': 'HR', 'Hungary': 'HU', 'Poland': 'PL',
+  'Czech Republic': 'CZ', 'Romania': 'RO', 'Estonia': 'EE', 'Latvia': 'LV',
+  'Slovakia': 'SK', 'Slovenia': 'SI', 'Lithuania': 'LT', 'Cyprus': 'CY',
+  'Malta': 'MT', 'Brazil': 'BR', 'Chile': 'CL', 'Mexico': 'MX',
+  'Colombia': 'CO', 'Japan': 'JP', 'HongKong': 'HK', 'Hong Kong': 'HK',
+  'Peru': 'PE', 'South Africa': 'ZA', 'Thailand': 'TH', 'Malaysia': 'MY',
+  'Philippines': 'PH', 'Indonesia': 'ID', 'Vietnam': 'VN', 'Taiwan': 'TW',
+  'Korea': 'KR', 'South Korea': 'KR',
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface ScenarioComputeData {
@@ -79,35 +99,53 @@ export async function loadScenarioComputeData(scenarioInput: Scenario): Promise<
     dPricingModel = 'tiered_per_kg'
     const { data: competitorCards } = await supabase
       .from('competitor_rate_cards')
-      .select('country_code, country_name_en, brackets')
+      .select('country_code, country_name_en, country_name_zh, brackets')
       .eq('competitor_name', dCompetitorName)
       .eq('service_code', dServiceCode)
       .eq('is_current', true)
 
-    // Convert competitor card brackets → VendorDTieredRate[] format
+    // Convert competitor card brackets → VendorDTieredRate[] format.
+    // Emit each bracket under EVERY plausible identifier (stored ISO code,
+    // inferred ISO code, country_name_en, country_name_zh) so callers work
+    // regardless of which key they look up by:
+    //   - scenarios page uses: country_code ?? country_name_zh ?? country_name_en
+    //   - pricing-flow-v2 uses: country_code ?? COUNTRY_NAME_TO_ISO[name_en] ?? name_en
+    // Without multi-keying, AU zones / cards with country_code=NULL would silently
+    // miss the D-segment lookup and fall back to segD=0 → "計算錯誤" / way-too-low cost.
     vendorDTieredRates = (competitorCards ?? []).flatMap((card) => {
       const c = card as {
         country_code: string | null
         country_name_en: string
+        country_name_zh: string | null
         brackets: Array<{ weight_min: number; weight_max: number; rate_per_kg: number; reg_fee: number }>
       }
-      // Use country_code when available; fall back to country_name_en as identifier
-      const countryId = c.country_code ?? c.country_name_en
-      if (!countryId) return []
-      return (c.brackets ?? []).map((b) => ({
-        id: '',
-        vendor_id: '',
-        country_code: countryId,
-        country_name: c.country_name_en,
-        weight_min_kg: b.weight_min,
-        weight_max_kg: b.weight_max,
-        rate_per_kg: b.rate_per_kg,
-        registration_fee: b.reg_fee ?? 0,
-        currency: 'HKD',
-        version: 1,
-        is_current: true,
-        source: 'competitor_card',
-      })) as unknown as VendorDTieredRate[]
+      const keys = new Set<string>()
+      if (c.country_code) keys.add(c.country_code)
+      if (c.country_name_en) {
+        keys.add(c.country_name_en)
+        const inferred = COUNTRY_NAME_TO_ISO[c.country_name_en]
+        if (inferred) keys.add(inferred)
+      }
+      const zh = c.country_name_zh?.trim()
+      if (zh) keys.add(zh)
+      if (keys.size === 0) return []
+
+      return [...keys].flatMap((key) =>
+        (c.brackets ?? []).map((b) => ({
+          id: '',
+          vendor_id: '',
+          country_code: key,
+          country_name: c.country_name_en,
+          weight_min_kg: b.weight_min,
+          weight_max_kg: b.weight_max,
+          rate_per_kg: b.rate_per_kg,
+          registration_fee: b.reg_fee ?? 0,
+          currency: 'HKD',
+          version: 1,
+          is_current: true,
+          source: 'competitor_card',
+        })),
+      ) as unknown as VendorDTieredRate[]
     })
   } else {
     const dVendorId = scenario.vendor_d_id

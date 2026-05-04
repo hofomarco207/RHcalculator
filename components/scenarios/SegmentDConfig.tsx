@@ -16,6 +16,8 @@ interface CompetitorGroup {
   service_code: string
   label: string  // vendor_label or fallback
   country_count: number
+  version: number | null
+  valid_from: string | null   // YYYY-MM-DD
 }
 
 interface SegmentDConfigProps {
@@ -40,6 +42,9 @@ export function SegmentDConfig({
         vendor_label?: string | null
         country_code?: string | null
         country_name_en?: string | null
+        version?: number | null
+        valid_from?: string | null
+        created_at?: string | null
       }>) => {
         if (!Array.isArray(rows)) return
         // Group by (competitor_name, service_code)
@@ -53,6 +58,9 @@ export function SegmentDConfig({
               service_code: row.service_code,
               label: row.vendor_label?.trim() || `${row.competitor_name} ${row.service_code}`,
               country_count: 0,
+              version: row.version ?? null,
+              // Prefer explicit valid_from, fall back to created_at if absent
+              valid_from: (row.valid_from ?? row.created_at ?? null)?.slice(0, 10) ?? null,
             })
           }
           // Count by country_name_en (country_code may be null after import validation)
@@ -106,6 +114,15 @@ export function SegmentDConfig({
         <p className="text-xs text-muted-foreground">
           定價模型：<span className="font-medium">按重量階梯</span>
           ｜來源：{selected.competitor_name} {selected.service_code}
+          {(selected.version != null || selected.valid_from) && (
+            <>
+              {' '}｜版本：
+              {selected.version != null && <span className="font-medium">v{selected.version}</span>}
+              {selected.valid_from && (
+                <span className="ml-1">({selected.valid_from})</span>
+              )}
+            </>
+          )}
         </p>
       )}
     </div>
