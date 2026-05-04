@@ -56,7 +56,10 @@ export function aCardToPriceRows(countryBrackets: DbCountryBracket[]): PriceCard
   const rows: PriceCardRow[] = []
   for (const cb of countryBrackets) {
     const baseName = cb.country_name_zh || cb.country_name_en
-    const matchKey = baseName
+    // Australia zone mapping: DB stores 'AU-1'/'AU-2'/'AU-3' in country_code
+    // TMS generates matchKey '澳洲-1'/'澳洲-2'/'澳洲-3' from the 分区 column
+    const auZone = cb.country_code.match(/^AU-(\d+)$/)
+    const matchKey = auZone ? `澳洲-${auZone[1]}` : baseName
     for (const b of cb.brackets) {
       rows.push({
         countryEN: cb.country_name_en,
