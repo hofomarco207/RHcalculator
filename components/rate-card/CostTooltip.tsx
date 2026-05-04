@@ -160,21 +160,21 @@ export function scenarioSegATooltip(detail: BracketDetail['seg_a'], total: numbe
       {hasPerKg && (
         <>
           {'\n'}
-          攬收 {detail.pickup_rate.toFixed(2)} HKD/kg
+          攬收 {detail.pickup_rate.toFixed(2)} TWD/kg
           {detail.include_sorting && (
             <>
               {'\n'}
-              分揀 +{detail.sorting_rate.toFixed(2)} HKD/kg
+              分揀 +{detail.sorting_rate.toFixed(2)} TWD/kg
             </>
           )}
           {'\n'}
-          {rate.toFixed(2)} × {detail.weight_kg}kg{bubble !== 1.0 && ` × ${bubble}(拋)`} = {(detail.per_kg_cost_hkd ?? 0).toFixed(2)} HKD
+          {rate.toFixed(2)} TWD × {detail.weight_kg}kg{bubble !== 1.0 && ` × ${bubble}(拋)`} = {((detail.per_kg_cost_hkd ?? 0) * mul).toFixed(2)} {cur}
         </>
       )}
       {hasPerPiece && (
         <>
           {'\n'}
-          件費 {sym}{detail.per_piece_fee}/件 × 匯率 {(detail.exchange_rate ?? 1).toFixed(4)} = {(detail.per_piece_cost_hkd ?? 0).toFixed(2)} HKD
+          件費 {sym}{detail.per_piece_fee}/件 × 匯率 {(detail.exchange_rate ?? 1).toFixed(4)} = {((detail.per_piece_cost_hkd ?? 0) * mul).toFixed(2)} {cur}
         </>
       )}
       {'\n'}
@@ -196,11 +196,11 @@ export function scenarioSegBTooltip(detail: BracketDetail['seg_b'], total: numbe
               <span className="text-amber-300"> ({gw.service_count}家服務取中位)</span>
             ) : null}
             {'\n'}
-            {'  '}運費 {gw.rate_per_kg.toFixed(2)} × {gw.bubble_rate}(泡) × {(gw.freight_cost / (gw.rate_per_kg * gw.bubble_rate || 1)).toFixed(2)}kg = {gw.freight_cost.toFixed(2)}
+            {'  '}運費 {gw.rate_per_kg.toFixed(2)} × {gw.bubble_rate}(泡) × {(gw.freight_cost / (gw.rate_per_kg * gw.bubble_rate || 1)).toFixed(2)}kg = {(gw.freight_cost * mul).toFixed(2)}
             {'\n'}
-            {'  '}提單 {gw.mawb_fixed_total.toFixed(0)} ÷ {Math.round(gw.tickets_per_mawb)}票 = {gw.mawb_amortized.toFixed(2)}
+            {'  '}提單 {gw.mawb_fixed_total.toFixed(0)} ÷ {Math.round(gw.tickets_per_mawb)}票 = {(gw.mawb_amortized * mul).toFixed(2)}
             {'\n'}
-            {'  '}小計 {gw.subtotal.toFixed(2)} HKD
+            {'  '}小計 {(gw.subtotal * mul).toFixed(2)} {cur}
           </span>
         ))
       ) : (
@@ -222,13 +222,13 @@ export function scenarioSegCTooltip(detail: BracketDetail['seg_c'], total: numbe
             {'\n'}
             <span className="text-blue-300">{gw.gateway}</span> ({(gw.proportion * 100).toFixed(0)}%)
             {'\n'}
-            {'  '}MAWB攤分: {gw.mawb_amortized.toFixed(2)} HKD
+            {'  '}MAWB攤分: {(gw.mawb_amortized * mul).toFixed(2)} {cur}
             {'\n'}
-            {'  '}按KG費: {gw.per_kg_cost.toFixed(2)} HKD
+            {'  '}按KG費: {(gw.per_kg_cost * mul).toFixed(2)} {cur}
             {'\n'}
-            {'  '}每票費: {gw.per_hawb_cost.toFixed(2)} HKD
+            {'  '}每票費: {(gw.per_hawb_cost * mul).toFixed(2)} {cur}
             {'\n'}
-            {'  '}小計 {gw.subtotal.toFixed(2)} HKD
+            {'  '}小計 {(gw.subtotal * mul).toFixed(2)} {cur}
           </span>
         ))
       ) : (
@@ -245,6 +245,9 @@ export function scenarioSegBCTooltip(detail: BracketDetail['seg_bc'], total: num
   const fuelPct = detail.fuel_surcharge_pct ?? 0
   const rateLabel = `${detail.rate_per_kg} ${detail.currency}/kg × ${detail.weight_kg.toFixed(2)} kg`
   const fuelLabel = fuelPct > 0 ? `× (1 + ${fuelPct}% 燃油)` : ''
+  // When caller asks for TWD, show the source-currency subtotal then the
+  // explicit HKD→TWD bridge so the user can reproduce the math.
+  const wantsTwd = cur === 'TWD' && mul !== 1
   return (
     <>
       <span className="text-teal-400 font-semibold">BC 空運+清關</span>
@@ -257,6 +260,12 @@ export function scenarioSegBCTooltip(detail: BracketDetail['seg_bc'], total: num
         <>
           {'\n'}
           × {detail.exchange_rate_to_hkd.toFixed(4)} (→HKD)
+        </>
+      )}
+      {wantsTwd && (
+        <>
+          {'\n'}
+          × {mul.toFixed(4)} (HKD→TWD)
         </>
       )}
       {'\n'}
@@ -291,7 +300,7 @@ export function scenarioSegDTooltip(detail: BracketDetail['seg_d'], total: numbe
               )
             })}
             {'\n'}
-            {'  '}加權 ${gw.avg_cost_usd.toFixed(4)} × {gw.usd_hkd} = {gw.subtotal.toFixed(2)} HKD
+            {'  '}加權 ${gw.avg_cost_usd.toFixed(4)} × {gw.usd_hkd} = {(gw.subtotal * mul).toFixed(2)} {cur}
           </span>
         ))
       ) : pd?.model === 'weight_bracket' && pd.zones ? (

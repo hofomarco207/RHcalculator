@@ -16,6 +16,7 @@ import {
   scenarioSegBCTooltip,
   scenarioSegDTooltip,
 } from '@/components/rate-card/CostTooltip'
+import { useExchangeRates } from '@/lib/context/exchange-rate-context'
 import type { BracketCost } from '@/types/scenario'
 import { invalidSegments, isCostValid, type PricingMode } from '@/lib/utils/cost-validation'
 
@@ -24,6 +25,7 @@ interface ScenarioCostVerificationTableProps {
   pricingMode?: PricingMode
 }
 
+// All displayed values are converted from internal HKD → TWD for the user.
 function fmt(n: number, decimals = 2): string {
   return n.toFixed(decimals)
 }
@@ -33,6 +35,10 @@ const INVALID_UNDERLINE = 'cursor-help border-b border-dotted border-red-500'
 const OK_UNDERLINE = 'cursor-help border-b border-dotted border-muted-foreground/40'
 
 export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCostVerificationTableProps) {
+  const { rates } = useExchangeRates()
+  // Convert internal HKD costs → TWD for display. Fallback to 1/0.244 if rate missing.
+  const twdPerHkd = rates.twd_hkd ? 1 / rates.twd_hkd : 4.098
+
   if (!costs || costs.length === 0) return null
 
   // Detect mode from data when prop not provided
@@ -47,7 +53,7 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold">成本驗算表</h3>
+      <h3 className="text-sm font-semibold">成本驗算表 <span className="text-xs text-muted-foreground font-normal">(TWD)</span></h3>
       <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
@@ -86,12 +92,12 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
                   <TableCell className={`text-center font-mono text-xs ${bad('seg_a') ? INVALID_CELL : ''}`}>
                     <CostTooltip
                       content={detail
-                        ? scenarioSegATooltip(detail.seg_a, b.seg_a)
-                        : <span>{fmt(b.seg_a)} HKD</span>
+                        ? scenarioSegATooltip(detail.seg_a, b.seg_a, twdPerHkd, 'TWD')
+                        : <span>{fmt(b.seg_a * twdPerHkd)} TWD</span>
                       }
                     >
                       <span className={bad('seg_a') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                        {fmt(b.seg_a)}
+                        {fmt(b.seg_a * twdPerHkd)}
                       </span>
                     </CostTooltip>
                   </TableCell>
@@ -101,12 +107,12 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
                     <TableCell className={`text-center font-mono text-xs ${bad('seg_d') ? INVALID_CELL : ''}`}>
                       <CostTooltip
                         content={detail
-                          ? scenarioSegDTooltip(detail.seg_d, b.seg_d)
-                          : <span>{fmt(b.seg_d)} HKD</span>
+                          ? scenarioSegDTooltip(detail.seg_d, b.seg_d, twdPerHkd, 'TWD')
+                          : <span>{fmt(b.seg_d * twdPerHkd)} TWD</span>
                         }
                       >
                         <span className={bad('seg_d') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                          {fmt(b.seg_d)}
+                          {fmt(b.seg_d * twdPerHkd)}
                         </span>
                       </CostTooltip>
                     </TableCell>
@@ -115,12 +121,12 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
                     <TableCell className={`text-center font-mono text-xs ${bad('seg_bc') ? INVALID_CELL : ''}`}>
                       <CostTooltip
                         content={detail?.seg_bc
-                          ? scenarioSegBCTooltip(detail.seg_bc, b.seg_bc ?? 0)
-                          : <><span className="text-teal-400 font-semibold">BC 空運+清關</span>{'\n'}<span className="text-amber-400">= {fmt(b.seg_bc ?? 0)} HKD</span></>
+                          ? scenarioSegBCTooltip(detail.seg_bc, b.seg_bc ?? 0, twdPerHkd, 'TWD')
+                          : <><span className="text-teal-400 font-semibold">BC 空運+清關</span>{'\n'}<span className="text-amber-400">= {fmt((b.seg_bc ?? 0) * twdPerHkd)} TWD</span></>
                         }
                       >
                         <span className={bad('seg_bc') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                          {fmt(b.seg_bc ?? 0)}
+                          {fmt((b.seg_bc ?? 0) * twdPerHkd)}
                         </span>
                       </CostTooltip>
                     </TableCell>
@@ -130,12 +136,12 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
                       <TableCell className={`text-center font-mono text-xs ${bad('seg_b') ? INVALID_CELL : ''}`}>
                         <CostTooltip
                           content={detail
-                            ? scenarioSegBTooltip(detail.seg_b, b.seg_b)
-                            : <span>{fmt(b.seg_b)} HKD</span>
+                            ? scenarioSegBTooltip(detail.seg_b, b.seg_b, undefined, twdPerHkd, 'TWD')
+                            : <span>{fmt(b.seg_b * twdPerHkd)} TWD</span>
                           }
                         >
                           <span className={bad('seg_b') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                            {fmt(b.seg_b)}
+                            {fmt(b.seg_b * twdPerHkd)}
                           </span>
                         </CostTooltip>
                       </TableCell>
@@ -143,12 +149,12 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
                       <TableCell className={`text-center font-mono text-xs ${bad('seg_c') ? INVALID_CELL : ''}`}>
                         <CostTooltip
                           content={detail
-                            ? scenarioSegCTooltip(detail.seg_c, b.seg_c)
-                            : <span>{fmt(b.seg_c)} HKD</span>
+                            ? scenarioSegCTooltip(detail.seg_c, b.seg_c, twdPerHkd, 'TWD')
+                            : <span>{fmt(b.seg_c * twdPerHkd)} TWD</span>
                           }
                         >
                           <span className={bad('seg_c') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                            {fmt(b.seg_c)}
+                            {fmt(b.seg_c * twdPerHkd)}
                           </span>
                         </CostTooltip>
                       </TableCell>
@@ -160,12 +166,12 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
                     <TableCell className={`text-center font-mono text-xs ${bad('seg_d') ? INVALID_CELL : ''}`}>
                       <CostTooltip
                         content={detail
-                          ? scenarioSegDTooltip(detail.seg_d, b.seg_d)
-                          : <span>{fmt(b.seg_d)} HKD</span>
+                          ? scenarioSegDTooltip(detail.seg_d, b.seg_d, twdPerHkd, 'TWD')
+                          : <span>{fmt(b.seg_d * twdPerHkd)} TWD</span>
                         }
                       >
                         <span className={bad('seg_d') ? INVALID_UNDERLINE : OK_UNDERLINE}>
-                          {fmt(b.seg_d)}
+                          {fmt(b.seg_d * twdPerHkd)}
                         </span>
                       </CostTooltip>
                     </TableCell>
@@ -173,7 +179,7 @@ export function ScenarioCostVerificationTable({ costs, pricingMode }: ScenarioCo
 
                   {/* 總成本 */}
                   <TableCell className="text-center font-mono text-xs font-semibold">
-                    {valid ? fmt(b.cost_hkd) : <span className="text-red-500">計算錯誤</span>}
+                    {valid ? fmt(b.cost_hkd * twdPerHkd) : <span className="text-red-500">計算錯誤</span>}
                   </TableCell>
                 </TableRow>
               )

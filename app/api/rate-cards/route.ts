@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/server'
  * Query params:
  *   - with_brackets=1  : include country_brackets array on each card
  *   - is_current=0     : include all versions (default: only is_current=true)
+ *   - product_code     : filter to one product (combine with is_current=0 to list all its versions)
  *   - limit            : max results (default 30, max 200)
  */
 export async function GET(request: NextRequest) {
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url)
     const withBrackets = url.searchParams.get('with_brackets') === '1'
     const allVersions = url.searchParams.get('is_current') === '0'
+    const productCode = url.searchParams.get('product_code')
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '30', 10) || 30, 1000)
 
     let query = supabase
@@ -25,6 +27,9 @@ export async function GET(request: NextRequest) {
 
     if (!allVersions) {
       query = query.eq('is_current', true) as typeof query
+    }
+    if (productCode) {
+      query = query.eq('product_code', productCode) as typeof query
     }
 
     const { data, error } = await query

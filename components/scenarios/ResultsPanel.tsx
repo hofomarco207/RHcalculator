@@ -333,9 +333,9 @@ function ExpandedDetail({ detail, repWeight, segBTotal = 0, segCTotal = 0, segDT
         <div className="space-y-1 text-xs">
           {(detail.seg_a.pickup_rate > 0 || detail.seg_a.sorting_rate > 0) && (
             <>
-              <DetailRow label={t.resultsPanel.detailPickupRate} value={`${fmt(detail.seg_a.pickup_rate)} HKD/kg`} />
+              <DetailRow label={t.resultsPanel.detailPickupRate} value={`${fmt(detail.seg_a.pickup_rate)} TWD/kg`} />
               {detail.seg_a.include_sorting && (
-                <DetailRow label={t.resultsPanel.detailSortingRate} value={`${fmt(detail.seg_a.sorting_rate)} HKD/kg`} />
+                <DetailRow label={t.resultsPanel.detailSortingRate} value={`${fmt(detail.seg_a.sorting_rate)} TWD/kg`} />
               )}
               <DetailRow label={t.resultsPanel.detailRepWeight} value={`${fmt(detail.seg_a.weight_kg, 3)} kg`} />
               {(detail.seg_a.bubble_ratio ?? 1) !== 1 && (

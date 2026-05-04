@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { ResultRow, SummaryRow, cleanCountry, lookupPrice, PriceCardRow } from '@/lib/reconciliation/fee-audit/calculations'
 import { getUpsFactor, C_SURCHARGE_COLS, A_SURCHARGE_COLS } from '@/lib/reconciliation/fee-audit/constants'
 import { parseTmsFile, generateReport, TmsRow } from '@/lib/reconciliation/fee-audit/excel-parser'
 import {
-  aCardToPriceRows, cCardToPriceRows, groupCompetitorCards,
+  aCardToPriceRows, cCardToPriceRows,
+  groupRateCardsWithVersions, groupCompetitorCardsWithVersions,
   loadMappings, saveMappings,
-  DbRateCard, DbCompetitorRow, DbCountryBracket, CCardKey, ProductMapping, CCardGroup,
+  resolveACardVersion, resolveCCardVersion,
+  DbRateCard, DbCompetitorRow, DbCountryBracket,
+  ACardProductGroup, CCardGroupWithVersions,
+  ProductMapping,
 } from '@/lib/reconciliation/fee-audit/db-adapters'
 
 type AllocMode = 'per_kg' | 'per_shipment'
@@ -55,76 +59,184 @@ function MetricCard({ label, value, sub, alert }: { label: string; value: string
   )
 }
 
-// ─── Product mapping dialog ────────────────────────────────────────────────
+// ─── Mapping dialog ─────────────────────────────────────────────────────────
+// Per-product card mapping (remembered) + per-batch master version selectors (asked every time)
 
 function MappingDialog({
-  products, aCards, cGroups, initial, onConfirm, onClose,
+  products, aProducts, cGroups,
+  initialMappings,
+  initialAVersion, initialCVersion,
+  onConfirm, onClose,
 }: {
-  products: string[]
-  aCards: DbRateCard[]
-  cGroups: CCardGroup[]
-  initial: Record<string, ProductMapping>
-  onConfirm: (m: Record<string, ProductMapping>) => void
+  products: string[]                                 // unique TMS 产品名称 values
+  aProducts: ACardProductGroup[]
+  cGroups: CCardGroupWithVersions[]
+  initialMappings: Record<string, ProductMapping>
+  initialAVersion: number | null
+  initialCVersion: number | null
+  onConfirm: (mappings: Record<string, ProductMapping>, aVersion: number | null, cVersion: number | null) => void
   onClose: () => void
 }) {
   const [draft, setDraft] = useState<Record<string, ProductMapping>>(() => {
     const d: Record<string, ProductMapping> = {}
     for (const p of products) {
-      d[p] = initial[p] ?? { aCardId: '', cCardKey: '' }
+      d[p] = initialMappings[p] ?? { aCardProductCode: '', cCardKey: '' }
     }
     return d
   })
+  const [aVersion, setAVersion] = useState<number | null>(initialAVersion)
+  const [cVersion, setCVersion] = useState<number | null>(initialCVersion)
 
-  const allMapped = products.every((p) => draft[p]?.aCardId && draft[p]?.cCardKey)
+  const allMapped = products.every((p) => draft[p]?.aCardProductCode && draft[p]?.cCardKey)
+
+  // Resolve which actual version each chosen card will use, for the preview blurb under each row
+  const resolutionPreview = useMemo(() => {
+    const out: Record<string, { aLabel: string; cLabel: string }> = {}
+    for (const p of products) {
+      const m = draft[p]
+      if (!m?.aCardProductCode || !m?.cCardKey) continue
+      const aProd = aProducts.find((x) => x.productCode === m.aCardProductCode)
+      const cGrp = cGroups.find((x) => x.key === m.cCardKey)
+      const aResolved = aProd ? resolveACardVersion(aProd, aVersion) : null
+      const cResolved = cGrp ? resolveCCardVersion(cGrp, cVersion) : null
+      out[p] = {
+        aLabel: aResolved
+          ? `v${aResolved.version}${aResolved.isCurrent ? ' (最新)' : ''}${aResolved.validFrom ? ` · ${aResolved.validFrom.slice(0, 10)}~` : ''}${aVersion != null && aResolved.version !== aVersion ? ` ⚠ 無 v${aVersion} → 退用最近` : ''}`
+          : '查無版本',
+        cLabel: cResolved
+          ? `v${cResolved.version}${cResolved.isCurrent ? ' (最新)' : ''}${cResolved.validFrom ? ` · ${cResolved.validFrom.slice(0, 10)}~` : ''}${cVersion != null && cResolved.version !== cVersion ? ` ⚠ 無 v${cVersion} → 退用最近` : ''}`
+          : '查無版本',
+      }
+    }
+    return out
+  }, [products, draft, aProducts, cGroups, aVersion, cVersion])
+
+  // Available version numbers across all chosen A products / C groups (for the master dropdown)
+  const aVersionOptions = useMemo(() => {
+    const set = new Set<number>()
+    for (const p of products) {
+      const code = draft[p]?.aCardProductCode
+      if (!code) continue
+      const prod = aProducts.find((x) => x.productCode === code)
+      prod?.versions.forEach((v) => set.add(v.version))
+    }
+    return [...set].sort((a, b) => b - a)
+  }, [products, draft, aProducts])
+
+  const cVersionOptions = useMemo(() => {
+    const set = new Set<number>()
+    for (const p of products) {
+      const key = draft[p]?.cCardKey
+      if (!key) continue
+      const grp = cGroups.find((x) => x.key === key)
+      grp?.versions.forEach((v) => set.add(v.version))
+    }
+    return [...set].sort((a, b) => b - a)
+  }, [products, draft, cGroups])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[92vh] flex flex-col">
         {/* Header */}
         <div className="px-6 py-5 border-b">
-          <h2 className="text-base font-bold text-gray-900">設定價卡對應</h2>
+          <h2 className="text-base font-bold text-gray-900">設定本次驗算</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            TMS 中發現 {products.length} 個產品，請為每個產品指定 A 價卡及 C 價卡。完成後系統會自動記憶。
+            TMS 中發現 {products.length} 個產品。下方對應只需設一次（會記憶），上方版本每次都要確認，避免用最新價卡驗過往帳。
           </p>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
-          {products.map((product) => (
-            <div key={product} className="rounded-xl border border-gray-200 p-4 space-y-3">
-              <p className="text-sm font-semibold text-gray-800">{product}</p>
-              <div className="grid grid-cols-2 gap-3">
-                {/* A card */}
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-blue-700">A 價卡（我的報價）</label>
-                  <select
-                    value={draft[product]?.aCardId ?? ''}
-                    onChange={(e) => setDraft((d) => ({ ...d, [product]: { ...d[product], aCardId: e.target.value } }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">— 選擇 A 價卡 —</option>
-                    {aCards.map((c) => (
-                      <option key={c.id} value={c.id}>{c.product_name}</option>
-                    ))}
-                  </select>
-                </div>
-                {/* C card */}
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-green-700">C 價卡（雲途底價）</label>
-                  <select
-                    value={draft[product]?.cCardKey ?? ''}
-                    onChange={(e) => setDraft((d) => ({ ...d, [product]: { ...d[product], cCardKey: e.target.value as CCardKey } }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  >
-                    <option value="">— 選擇 C 價卡 —</option>
-                    {cGroups.map((g) => (
-                      <option key={g.key} value={g.key}>{g.label}</option>
-                    ))}
-                  </select>
-                </div>
+          {/* ── Master version selectors ─────────────────────── */}
+          <div className="rounded-xl border-2 border-amber-200 bg-amber-50/40 p-4 space-y-2">
+            <div className="flex items-baseline justify-between">
+              <p className="text-sm font-semibold text-amber-800">套用至所有產品的價卡版本</p>
+              <p className="text-[11px] text-amber-700">每次匯入都需確認</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-blue-700">A 卡版本</label>
+                <select
+                  value={aVersion ?? ''}
+                  onChange={(e) => setAVersion(e.target.value === '' ? null : parseInt(e.target.value, 10))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">最新版本（每張卡用各自的 is_current）</option>
+                  {aVersionOptions.map((v) => (
+                    <option key={v} value={v}>v{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-green-700">C 卡版本</label>
+                <select
+                  value={cVersion ?? ''}
+                  onChange={(e) => setCVersion(e.target.value === '' ? null : parseInt(e.target.value, 10))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                >
+                  <option value="">最新版本（每張卡用各自的 is_current）</option>
+                  {cVersionOptions.map((v) => (
+                    <option key={v} value={v}>v{v}</option>
+                  ))}
+                </select>
               </div>
             </div>
-          ))}
+            <p className="text-[11px] text-amber-700/80 leading-relaxed">
+              選定特定版本時，若某張卡沒有該版本，會退用最近一個 ≤ 該版本的舊版（其下方會以 ⚠ 提示）。
+            </p>
+          </div>
+
+          {/* ── Per-product mappings (remembered) ────────────── */}
+          <div className="space-y-2">
+            <div className="flex items-baseline justify-between">
+              <p className="text-sm font-semibold text-gray-700">產品 → 價卡對應</p>
+              <p className="text-[11px] text-gray-500">儲存後下次免設</p>
+            </div>
+            <div className="space-y-3">
+              {products.map((product) => {
+                const preview = resolutionPreview[product]
+                return (
+                  <div key={product} className="rounded-xl border border-gray-200 p-4 space-y-2">
+                    <p className="text-sm font-semibold text-gray-800 truncate" title={product}>{product}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-blue-700">A 價卡（我的報價）</label>
+                        <select
+                          value={draft[product]?.aCardProductCode ?? ''}
+                          onChange={(e) => setDraft((d) => ({ ...d, [product]: { ...d[product], aCardProductCode: e.target.value } }))}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">— 選擇 A 價卡 —</option>
+                          {aProducts.map((p) => (
+                            <option key={p.productCode} value={p.productCode}>{p.productName} ({p.productCode})</option>
+                          ))}
+                        </select>
+                        {preview?.aLabel && (
+                          <p className="text-[10px] text-blue-600/80 font-mono pl-1">→ {preview.aLabel}</p>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-green-700">C 價卡（雲途底價）</label>
+                        <select
+                          value={draft[product]?.cCardKey ?? ''}
+                          onChange={(e) => setDraft((d) => ({ ...d, [product]: { ...d[product], cCardKey: e.target.value } }))}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        >
+                          <option value="">— 選擇 C 價卡 —</option>
+                          {cGroups.map((g) => (
+                            <option key={g.key} value={g.key}>{g.label}</option>
+                          ))}
+                        </select>
+                        {preview?.cLabel && (
+                          <p className="text-[10px] text-green-700/80 font-mono pl-1">→ {preview.cLabel}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
@@ -133,7 +245,7 @@ function MappingDialog({
             取消
           </button>
           <button
-            onClick={() => { if (allMapped) onConfirm(draft) }}
+            onClick={() => { if (allMapped) onConfirm(draft, aVersion, cVersion) }}
             disabled={!allMapped}
             className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
           >
@@ -155,19 +267,23 @@ export default function FeeAuditPage() {
   const [transitMode, setTransitMode] = useState<AllocMode>('per_kg')
   const [handlingRate, setHandlingRate] = useState(0)
 
-  // DB card lists
-  const [aCards, setACards] = useState<DbRateCard[]>([])
-  const [cGroups, setCGroups] = useState<CCardGroup[]>([])
+  // DB card lists with full version history (used to populate dropdowns + resolve versions)
+  const [aProducts, setAProducts] = useState<ACardProductGroup[]>([])
+  const [cGroups, setCGroups] = useState<CCardGroupWithVersions[]>([])
   const [loadingCards, setLoadingCards] = useState(true)
 
   // TMS state
   const [tmsRows, setTmsRows] = useState<TmsRow[]>([])
   const [tmsName, setTmsName] = useState('')
+  const [pendingProducts, setPendingProducts] = useState<string[]>([])
 
-  // Mapping
+  // Per-product mappings (saved to localStorage, NOT versions)
   const [mappings, setMappings] = useState<Record<string, ProductMapping>>({})
   const [showDialog, setShowDialog] = useState(false)
-  const [pendingProducts, setPendingProducts] = useState<string[]>([])
+  // Master versions used for the most recent calculation (for the banner)
+  const [activeAVersion, setActiveAVersion] = useState<number | null>(null)
+  const [activeCVersion, setActiveCVersion] = useState<number | null>(null)
+  const [hasCalculated, setHasCalculated] = useState(false)
 
   // Results
   const [results, setResults] = useState<ResultRow[]>([])
@@ -175,72 +291,97 @@ export default function FeeAuditPage() {
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState('')
 
-  // Load DB cards and persisted mappings on mount
+  // Load DB cards (all versions) + persisted mappings on mount
   useEffect(() => {
     setMappings(loadMappings())
 
     Promise.all([
-      fetch('/api/rate-cards').then((r) => r.json()),
-      fetch('/api/competitor-rate-cards').then((r) => r.json()),
+      fetch('/api/rate-cards?is_current=0&limit=500').then((r) => r.json()),
+      fetch('/api/competitor-rate-cards?include_history=1').then((r) => r.json()),
     ]).then(([rateCards, competitorRows]) => {
-      setACards(Array.isArray(rateCards) ? rateCards : [])
+      const cards: DbRateCard[] = Array.isArray(rateCards) ? rateCards : []
+      setAProducts(groupRateCardsWithVersions(cards))
       const cRows: DbCompetitorRow[] = Array.isArray(competitorRows) ? competitorRows : []
-      setCGroups(groupCompetitorCards(cRows))
+      setCGroups(groupCompetitorCardsWithVersions(cRows))
     }).catch(() => {
       setError('無法載入價卡資料，請確認網路連線')
     }).finally(() => setLoadingCards(false))
   }, [])
 
-  // Run calculations after mappings are confirmed
+  // Run audit calculations
   const runCalculations = useCallback(async (
     rows: TmsRow[],
     confirmedMappings: Record<string, ProductMapping>,
+    aVersion: number | null,
+    cVersion: number | null,
   ) => {
     setProcessing(true)
     setError('')
     try {
-      // Get unique product → aCardId/cCardKey
-      const products = [...new Set(rows.map((r) => String(r['产品名称'] ?? '')))]
+      const products = [...new Set(rows.map((r) => String(r['产品名称'] ?? '')).filter(Boolean))]
 
-      // Fetch A card brackets for each unique aCardId
-      const aCardIds = [...new Set(products.map((p) => confirmedMappings[p]?.aCardId).filter(Boolean))]
-      const cCardKeys = [...new Set(products.map((p) => confirmedMappings[p]?.cCardKey).filter(Boolean))]
+      // Resolve A version per product (each product → specific rate_cards.id at chosen version)
+      const aIdsToFetch: string[] = []
+      const aResolvedByProduct: Record<string, { id: string; version: number } | null> = {}
+      for (const p of products) {
+        const m = confirmedMappings[p]
+        if (!m?.aCardProductCode) { aResolvedByProduct[p] = null; continue }
+        const prod = aProducts.find((x) => x.productCode === m.aCardProductCode)
+        if (!prod) { aResolvedByProduct[p] = null; continue }
+        const v = resolveACardVersion(prod, aVersion)
+        aResolvedByProduct[p] = v ? { id: v.id, version: v.version } : null
+        if (v && !aIdsToFetch.includes(v.id)) aIdsToFetch.push(v.id)
+      }
 
-      // Fetch all A card brackets in parallel
+      // Resolve C version per product (each product → specific (key, version))
+      const cKeysToFetch: Array<{ key: string; version: number }> = []
+      const cResolvedByProduct: Record<string, { key: string; version: number } | null> = {}
+      for (const p of products) {
+        const m = confirmedMappings[p]
+        if (!m?.cCardKey) { cResolvedByProduct[p] = null; continue }
+        const grp = cGroups.find((x) => x.key === m.cCardKey)
+        if (!grp) { cResolvedByProduct[p] = null; continue }
+        const v = resolveCCardVersion(grp, cVersion)
+        cResolvedByProduct[p] = v ? { key: m.cCardKey, version: v.version } : null
+        if (v && !cKeysToFetch.find((c) => c.key === m.cCardKey && c.version === v.version)) {
+          cKeysToFetch.push({ key: m.cCardKey, version: v.version })
+        }
+      }
+
+      // Fetch A card brackets — each rate_cards.id is one specific version
       const aCardData = await Promise.all(
-        aCardIds.map((id) =>
-          fetch(`/api/rate-cards/${id}?with_brackets=1`)
+        aIdsToFetch.map((id) =>
+          fetch(`/api/rate-cards/${id}`)
             .then((r) => r.json())
             .then((card) => ({ id, brackets: (card.country_brackets ?? []) as DbCountryBracket[] })),
         ),
       )
-      const aCardBracketsById = new Map(aCardData.map((d) => [d.id, d.brackets]))
+      const aBracketsById = new Map(aCardData.map((d) => [d.id, d.brackets]))
 
-      // Fetch all C card rows (we already have all from initial load, but fetch fresh grouped by service_code)
+      // Fetch C card brackets at the resolved version (filter client-side)
       const cCardData = await Promise.all(
-        cCardKeys.map((key) => {
+        cKeysToFetch.map(async ({ key, version }) => {
           const [competitorName, serviceCode] = key.split('||')
-          return fetch(`/api/competitor-rate-cards?competitor_name=${encodeURIComponent(competitorName)}&service_code=${encodeURIComponent(serviceCode)}`)
-            .then((r) => r.json())
-            .then((rows: DbCompetitorRow[]) => ({ key, rows }))
+          const res = await fetch(`/api/competitor-rate-cards?competitor_name=${encodeURIComponent(competitorName)}&service_code=${encodeURIComponent(serviceCode)}&include_history=1`)
+          if (!res.ok) return { key, version, rows: [] as DbCompetitorRow[] }
+          const allRows = await res.json() as DbCompetitorRow[]
+          const filtered = (Array.isArray(allRows) ? allRows : []).filter((r) => r.version === version)
+          return { key, version, rows: filtered }
         }),
       )
-      const cCardRowsByKey = new Map(cCardData.map((d) => [d.key, d.rows]))
+      const cRowsByKeyVer = new Map(cCardData.map((d) => [`${d.key}||v${d.version}`, d.rows]))
 
-      // Build lookup tables per product
+      // Build per-product price tables
       const pcsA: Record<string, PriceCardRow[]> = {}
       const pcsC: Record<string, PriceCardRow[]> = {}
-
-      for (const product of products) {
-        const m = confirmedMappings[product]
-        if (!m) continue
-        const aBrackets = aCardBracketsById.get(m.aCardId) ?? []
-        const cRows = cCardRowsByKey.get(m.cCardKey) ?? []
-        pcsA[product] = aCardToPriceRows(aBrackets)
-        pcsC[product] = cCardToPriceRows(cRows)
+      for (const p of products) {
+        const a = aResolvedByProduct[p]
+        const c = cResolvedByProduct[p]
+        if (!a || !c) continue
+        pcsA[p] = aCardToPriceRows(aBracketsById.get(a.id) ?? [])
+        pcsC[p] = cCardToPriceRows(cRowsByKeyVer.get(`${c.key}||v${c.version}`) ?? [])
       }
 
-      // Run audit calculations
       const totalWeight = rows.reduce((s, r) => s + (parseFloat(String(r['计费重量'] ?? '0').replace(/KG/gi, '').trim()) || 0), 0)
       const totalShipments = rows.length
       const pkFactor = pickupMode === 'per_kg' && totalWeight > 0
@@ -296,7 +437,6 @@ export default function FeeAuditPage() {
 
       setResults(resultRows)
 
-      // Customer summary (normal shipments only)
       const normalRows = resultRows.filter(
         (r) => r.transitStatus === '正常走貨' || r.transitStatus === '正常走货',
       )
@@ -311,14 +451,17 @@ export default function FeeAuditPage() {
         grouped[r.customerCode].profit += r.profit
       }
       setSummary(Object.values(grouped))
+      setActiveAVersion(aVersion)
+      setActiveCVersion(cVersion)
+      setHasCalculated(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : '計算失敗，請稍後再試')
     } finally {
       setProcessing(false)
     }
-  }, [pickupTotal, pickupMode, transitTotal, transitMode, handlingRate])
+  }, [pickupTotal, pickupMode, transitTotal, transitMode, handlingRate, aProducts, cGroups])
 
-  // Handle TMS upload
+  // TMS upload handler — always pop the dialog for version + (optional) mapping confirmation
   const handleTms = useCallback((file: File) => {
     setResults([]); setSummary([]); setError('')
     const reader = new FileReader()
@@ -327,32 +470,35 @@ export default function FeeAuditPage() {
       const rows = parseTmsFile(buffer)
       setTmsRows(rows)
       setTmsName(file.name)
-
-      const products = [...new Set(rows.map((r) => String(r['产品名称'] ?? '')))]
-      const saved = loadMappings()
-      const unmapped = products.filter((p) => !saved[p]?.aCardId || !saved[p]?.cCardKey)
-
-      if (unmapped.length > 0) {
-        setPendingProducts(products)
-        setShowDialog(true)
-      } else {
-        setMappings(saved)
-        runCalculations(rows, saved)
-      }
+      const products = [...new Set(rows.map((r) => String(r['产品名称'] ?? '')).filter(Boolean))]
+      setPendingProducts(products)
+      setShowDialog(true)
     }
     reader.readAsArrayBuffer(file)
-  }, [runCalculations])
+  }, [])
 
-  // Confirm mapping from dialog
-  const handleMappingConfirm = useCallback((confirmed: Record<string, ProductMapping>) => {
-    saveMappings(confirmed)
-    setMappings(confirmed)
+  const handleMappingConfirm = useCallback((
+    confirmedMappings: Record<string, ProductMapping>,
+    aVersion: number | null,
+    cVersion: number | null,
+  ) => {
+    saveMappings(confirmedMappings)
+    setMappings(confirmedMappings)
     setShowDialog(false)
-    runCalculations(tmsRows, confirmed)
+    runCalculations(tmsRows, confirmedMappings, aVersion, cVersion)
   }, [tmsRows, runCalculations])
+
+  // Re-open dialog with current state — lets user change version on already-uploaded TMS
+  const reopenDialog = () => {
+    if (tmsRows.length === 0) return
+    setShowDialog(true)
+  }
 
   // Download report
   const handleDownload = () => {
+    const aLabel = activeAVersion == null ? 'latest' : `v${activeAVersion}`
+    const cLabel = activeCVersion == null ? 'latest' : `v${activeCVersion}`
+    const stamp = `驗算依據　A 卡版本 ${aLabel} ｜ C 卡版本 ${cLabel}`
     const summaryData = summary.map((s) => ({
       '客戶代碼': s.customerCode, '正常走貨票數': s.normalCount,
       '計費總重量': Math.round(s.totalWeight * 100) / 100,
@@ -368,7 +514,11 @@ export default function FeeAuditPage() {
       '分攤_攬收(TWD)': r.pickupAlloc, '分攤_中轉(TWD)': r.transitAlloc,
       '處理費(TWD)': r.handlingFee, '總成本(TWD)': r.totalCost, '利潤(TWD)': r.profit,
     }))
-    const buf = generateReport(summaryData, detailData)
+    const summaryWithStamp = [
+      { '客戶代碼': stamp, '正常走貨票數': '', '計費總重量': '', 'A價總額(TWD)': '', '利潤(TWD)': '' },
+      ...summaryData,
+    ]
+    const buf = generateReport(summaryWithStamp, detailData)
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -383,20 +533,20 @@ export default function FeeAuditPage() {
   const abnormalCount = results.length - normalCount
   const diffCount = results.filter((r) => Math.abs(r.cDiff) > 0.1).length
 
-  // Current mapping summary for display
   const mappedProducts = Object.entries(mappings)
-    .filter(([, m]) => m.aCardId && m.cCardKey)
+    .filter(([, m]) => m.aCardProductCode && m.cCardKey)
     .map(([product]) => product)
 
   return (
     <>
-      {/* Mapping dialog */}
       {showDialog && (
         <MappingDialog
           products={pendingProducts}
-          aCards={aCards}
+          aProducts={aProducts}
           cGroups={cGroups}
-          initial={mappings}
+          initialMappings={mappings}
+          initialAVersion={activeAVersion}
+          initialCVersion={activeCVersion}
           onConfirm={handleMappingConfirm}
           onClose={() => setShowDialog(false)}
         />
@@ -445,18 +595,9 @@ export default function FeeAuditPage() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
 
-            {/* Mapping status */}
             {mappedProducts.length > 0 && (
               <div className="border-t pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-gray-600">已記憶對應</p>
-                  <button
-                    onClick={() => { setPendingProducts(mappedProducts); setShowDialog(true) }}
-                    className="text-xs text-blue-500 hover:text-blue-700"
-                  >
-                    修改
-                  </button>
-                </div>
+                <p className="text-xs font-medium text-gray-600 mb-2">已記憶 {mappedProducts.length} 個對應</p>
                 <div className="space-y-1">
                   {mappedProducts.map((p) => (
                     <p key={p} className="text-xs text-gray-400 truncate" title={p}>✓ {p}</p>
@@ -472,39 +613,57 @@ export default function FeeAuditPage() {
           <div>
             <h1 className="text-lg font-bold text-gray-900">費用稽核 — C 價驗算看板</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              上傳 TMS 數據，A / C 價卡自動從資料庫讀取，即時計算每票利潤及驗算誤差
+              上傳 TMS 數據，每個產品對應自己的 A / C 價卡（記憶後免設），再選一次本批要套用的版本
             </p>
           </div>
 
-          {/* DB card status */}
           <div className="flex items-center gap-4 px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 text-sm">
             {loadingCards
               ? <span className="text-gray-400">正在載入價卡清單…</span>
               : (
                 <>
                   <span className="text-gray-600">
-                    <span className="font-medium text-blue-700">{aCards.length}</span> 張 A 價卡
+                    <span className="font-medium text-blue-700">{aProducts.length}</span> 個 A 產品
                   </span>
                   <span className="text-gray-300">|</span>
                   <span className="text-gray-600">
                     <span className="font-medium text-green-700">{cGroups.length}</span> 組 C 價卡
                   </span>
                   <span className="text-gray-300">|</span>
-                  <span className="text-gray-400">已從資料庫載入</span>
+                  <span className="text-gray-400">已從資料庫載入（含全部歷史版本）</span>
                 </>
               )
             }
           </div>
 
-          {/* TMS upload */}
           <FileDropZone
             label="匯入 TMS 數據"
-            sublabel=".csv 或 .xlsx — 上傳後自動與資料庫價卡對應並計算"
+            sublabel=".csv 或 .xlsx — 上傳後會跳出對話框讓你確認版本"
             accept=".csv,.xlsx"
             loaded={tmsName}
             disabled={loadingCards}
             onFile={handleTms}
           />
+
+          {hasCalculated && results.length > 0 && (
+            <div className="flex items-center justify-between gap-4 px-4 py-3 bg-blue-50 rounded-xl border border-blue-200 text-sm">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">驗算依據</span>
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs font-medium text-blue-700 border border-blue-200">
+                  A 版本: {activeAVersion == null ? '最新' : `v${activeAVersion}`}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs font-medium text-green-700 border border-green-200">
+                  C 版本: {activeCVersion == null ? '最新' : `v${activeCVersion}`}
+                </span>
+              </div>
+              <button
+                onClick={reopenDialog}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+              >
+                更換版本重新計算
+              </button>
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 
@@ -515,7 +674,6 @@ export default function FeeAuditPage() {
             </div>
           )}
 
-          {/* Results */}
           {results.length > 0 && !processing && (
             <>
               <div className="grid grid-cols-4 gap-4">
@@ -566,7 +724,6 @@ export default function FeeAuditPage() {
                           </td>
                         </tr>
                       ))}
-                      {/* Total row */}
                       <tr className="bg-gray-50 font-semibold border-t-2 border-gray-200">
                         <td className="px-4 py-2.5 text-gray-700">合計</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{summary.reduce((s, r) => s + r.normalCount, 0)}</td>
@@ -591,7 +748,7 @@ export default function FeeAuditPage() {
           {results.length === 0 && !processing && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <span className="text-5xl mb-4">📊</span>
-              <p className="text-gray-500 text-sm">上傳 TMS 檔案後自動計算，結果顯示在這裡</p>
+              <p className="text-gray-500 text-sm">上傳 TMS 檔案後選擇版本，結果顯示在這裡</p>
               {mappedProducts.length > 0 && (
                 <p className="text-gray-400 text-xs mt-2">已記憶 {mappedProducts.length} 個產品的價卡對應</p>
               )}
