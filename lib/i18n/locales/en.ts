@@ -20,6 +20,9 @@ export const en: Translations = {
     advancedPricingAnalysis: 'Advanced - Pricing Analysis',
     pricingAnalysis: 'Pricing Analysis',
     settings: 'Settings',
+    reconciliation: 'Reconciliation',
+    feeAudit: 'Fee Audit',
+    invoiceGen: 'Invoice Generator',
   },
 
   // ─── Tabs ─────────────────────────────────────────────────────────────────

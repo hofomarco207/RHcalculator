@@ -18,6 +18,9 @@ export const zh = {
     advancedPricingAnalysis: '進階 - 定價分析',
     pricingAnalysis: '定價分析',
     settings: '系統設定',
+    reconciliation: '對帳相關',
+    feeAudit: '費用稽核',
+    invoiceGen: '發票生成',
   },
 
   // ─── Tabs ─────────────────────────────────────────────────────────────────

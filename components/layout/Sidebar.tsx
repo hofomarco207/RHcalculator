@@ -23,6 +23,13 @@ function getNavGroups(t: Translations) {
         { emoji: '🗂️', label: t.sidebar.shipmentHistory, tabId: 'data-shipments' as TabId },
       ],
     },
+    {
+      label: (t.sidebar as Record<string, string>).reconciliation ?? '對帳相關',
+      items: [
+        { emoji: '🔍', label: (t.sidebar as Record<string, string>).feeAudit ?? '費用稽核', tabId: 'fee-audit' as TabId },
+        { emoji: '🧾', label: (t.sidebar as Record<string, string>).invoiceGen ?? '發票生成', tabId: 'invoice-gen' as TabId },
+      ],
+    },
   ]
 }
 

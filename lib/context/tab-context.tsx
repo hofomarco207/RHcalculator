@@ -29,6 +29,8 @@ export const TAB_DEFINITIONS: TabDefinition[] = [
   { id: 'rate-card', emoji: '📋', closable: true, group: 'core' },
   { id: 'advanced-analysis', emoji: '📊', closable: true, group: 'advanced' },
   { id: 'competitor', emoji: '🏆', closable: true, group: 'advanced' },
+  { id: 'fee-audit', emoji: '🔍', closable: true, group: 'reconciliation' },
+  { id: 'invoice-gen', emoji: '🧾', closable: true, group: 'reconciliation' },
 ]
 
 export const TAB_IDS = TAB_DEFINITIONS.map((d) => d.id)

@@ -13,6 +13,8 @@ const ShipmentsPanel = lazy(() => import('@/app/(admin)/data/shipments/page'))
 const PricingFlowPanel = lazy(() => import('@/components/tabs/PricingFlowPanel'))
 const AdvancedAnalysisPanel = lazy(() => import('@/components/tabs/AdvancedAnalysisPanel'))
 const LibraryPanel = lazy(() => import('@/components/tabs/LibraryPanel'))
+const FeeAuditPanel = lazy(() => import('@/app/(admin)/reconciliation/fee-audit/page'))
+const InvoiceGenPanel = lazy(() => import('@/app/(admin)/reconciliation/invoice-gen/page'))
 
 function getTabComponent(tabId: TabId) {
   switch (tabId) {
@@ -25,6 +27,8 @@ function getTabComponent(tabId: TabId) {
     case 'pricing-flow': return <PricingFlowPanel />
     case 'advanced-analysis': return <AdvancedAnalysisPanel />
     case 'library': return <LibraryPanel />
+    case 'fee-audit': return <FeeAuditPanel />
+    case 'invoice-gen': return <InvoiceGenPanel />
     default: return null
   }
 }
