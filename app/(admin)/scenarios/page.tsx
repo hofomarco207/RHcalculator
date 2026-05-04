@@ -82,11 +82,16 @@ export default function ScenariosPage() {
       .then((r) => r.json())
       .then((rows: Array<{ country_code?: string | null; country_name_en: string; country_name_zh?: string | null }>) => {
         if (!Array.isArray(rows)) return
-        const countries = rows
-          .map((r) => ({
-            id: r.country_code ?? r.country_name_en,
-            label: r.country_name_zh?.trim() || r.country_name_en,
-          }))
+        // Deduplicate by id — competitor cards may have multiple rows per country
+        // (e.g. AU-1/AU-2/AU-3 all with country_name_en="Australia" and null country_code)
+        const seen = new Map<string, { id: string; label: string }>()
+        for (const r of rows) {
+          const id = r.country_code ?? r.country_name_zh?.trim() ?? r.country_name_en
+          if (!seen.has(id)) {
+            seen.set(id, { id, label: r.country_name_zh?.trim() || r.country_name_en })
+          }
+        }
+        const countries = [...seen.values()]
           .sort((a, b) => a.label.localeCompare(b.label, 'zh'))
         setAvailableCountries(countries)
         // Default to US/美國 if available, else first country
