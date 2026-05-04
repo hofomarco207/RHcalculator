@@ -15,6 +15,8 @@ function getTabLabel(tabId: string, t: Translations): string {
     case 'pricing-flow': return (t.sidebar as Record<string, string>).pricingFlow ?? '定價流程'
     case 'advanced-analysis': return (t.sidebar as Record<string, string>).advancedPricingAnalysis ?? '定價分析'
     case 'library': return (t.sidebar as Record<string, string>).library ?? '資料總覽'
+    case 'fee-audit': return (t.sidebar as Record<string, string>).feeAudit ?? '費用稽核'
+    case 'invoice-gen': return (t.sidebar as Record<string, string>).invoiceGen ?? '發票生成'
     default: return tabId
   }
 }
