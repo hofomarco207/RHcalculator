@@ -49,6 +49,11 @@ export function lookupPrice(
   if (!pcRows || pcRows.length === 0) return { freight: 0, regFee: 0 }
   let match = pcRows.find((r) => r.matchKey === matchKey && r.wMin < weight && r.wMax >= weight)
   if (!match) match = pcRows.find((r) => r.matchKey === matchKey)
+  // Australia zone fallback: '澳洲-1' → try '澳洲' (DB cards may not split by zone)
+  if (!match && matchKey.startsWith('澳洲-')) {
+    match = pcRows.find((r) => r.matchKey === '澳洲' && r.wMin < weight && r.wMax >= weight)
+    if (!match) match = pcRows.find((r) => r.matchKey === '澳洲')
+  }
   if (!match) return { freight: 0, regFee: 0 }
   const effectiveWeight = Math.max(weight, match.minWeight)
   return { freight: effectiveWeight * match.rate, regFee: match.regFee }
