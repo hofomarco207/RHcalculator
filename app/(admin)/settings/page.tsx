@@ -919,6 +919,164 @@ function computeBracketChanges(
   return out
 }
 
+// ─── Customers Tab ───────────────────────────────────────────────────────────
+
+interface Customer {
+  id: string
+  name: string
+  contact_email: string | null
+  contact_phone: string | null
+  notes: string | null
+  is_active: boolean
+  created_at: string
+}
+
+function CustomersTab() {
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showDialog, setShowDialog] = useState(false)
+  const [editing, setEditing] = useState<Customer | null>(null)
+  const [form, setForm] = useState({ name: '', contact_email: '', contact_phone: '', notes: '' })
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/customers')
+      const data = await res.json()
+      if (Array.isArray(data)) setCustomers(data)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  function openCreate() {
+    setEditing(null)
+    setForm({ name: '', contact_email: '', contact_phone: '', notes: '' })
+    setShowDialog(true)
+  }
+
+  function openEdit(c: Customer) {
+    setEditing(c)
+    setForm({ name: c.name, contact_email: c.contact_email ?? '', contact_phone: c.contact_phone ?? '', notes: c.notes ?? '' })
+    setShowDialog(true)
+  }
+
+  async function handleSave() {
+    if (!form.name.trim()) { toast.error('名稱為必填'); return }
+    setSaving(true)
+    try {
+      const body = { name: form.name.trim(), contact_email: form.contact_email || null, contact_phone: form.contact_phone || null, notes: form.notes || null }
+      const res = editing
+        ? await fetch(`/api/customers/${editing.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        : await fetch('/api/customers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error) }
+      toast.success(editing ? '已更新客戶' : '已新增客戶')
+      setShowDialog(false)
+      load()
+    } catch (err) {
+      toast.error(`儲存失敗：${err instanceof Error ? err.message : '未知錯誤'}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleActive(c: Customer) {
+    try {
+      const res = await fetch(`/api/customers/${c.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !c.is_active }) })
+      if (!res.ok) { const err = await res.json(); throw new Error(err.error) }
+      toast.success(c.is_active ? '已停用客戶' : '已啟用客戶')
+      load()
+    } catch (err) {
+      toast.error(`操作失敗：${err instanceof Error ? err.message : '未知錯誤'}`)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">客戶管理</CardTitle>
+          <Button size="sm" onClick={openCreate}>新增客戶</Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">載入中...</p>
+        ) : customers.length === 0 ? (
+          <p className="text-sm text-muted-foreground">尚無客戶，請先新增。</p>
+        ) : (
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>名稱</TableHead>
+                  <TableHead>聯絡信箱</TableHead>
+                  <TableHead>聯絡電話</TableHead>
+                  <TableHead>備註</TableHead>
+                  <TableHead>狀態</TableHead>
+                  <TableHead className="w-24"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {customers.map((c) => (
+                  <TableRow key={c.id} className={c.is_active ? '' : 'opacity-50'}>
+                    <TableCell className="font-medium text-sm">{c.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{c.contact_email ?? '—'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{c.contact_phone ?? '—'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[180px] truncate">{c.notes ?? '—'}</TableCell>
+                    <TableCell>
+                      <Badge variant={c.is_active ? 'default' : 'secondary'} className="text-xs cursor-pointer" onClick={() => toggleActive(c)}>
+                        {c.is_active ? '啟用' : '停用'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => openEdit(c)}>編輯</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+
+      {/* Create/Edit dialog */}
+      <Dialog open={showDialog} onOpenChange={(o) => { if (!o) setShowDialog(false) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editing ? '編輯客戶' : '新增客戶'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>名稱 *</Label>
+              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="客戶名稱" />
+            </div>
+            <div className="space-y-1">
+              <Label>聯絡信箱</Label>
+              <Input value={form.contact_email} onChange={(e) => setForm((f) => ({ ...f, contact_email: e.target.value }))} placeholder="email@example.com" type="email" />
+            </div>
+            <div className="space-y-1">
+              <Label>聯絡電話</Label>
+              <Input value={form.contact_phone} onChange={(e) => setForm((f) => ({ ...f, contact_phone: e.target.value }))} placeholder="+886 ..." />
+            </div>
+            <div className="space-y-1">
+              <Label>備註</Label>
+              <Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="選填備註" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>取消</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? '儲存中...' : '儲存'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
+
 function CompetitorTab() {
   const t = useT()
   const [cards, setCards] = useState<CompetitorCard[]>([])
@@ -1537,6 +1695,7 @@ export default function SettingsPage() {
           <TabsTrigger value="gateways">{t.pages.settings.gateways}</TabsTrigger>
           <TabsTrigger value="carriers">{t.pages.settings.carriers}</TabsTrigger>
           <TabsTrigger value="competitor">{t.pages.settings.competitorCards}</TabsTrigger>
+          <TabsTrigger value="customers">客戶</TabsTrigger>
         </TabsList>
 
         <TabsContent value="countries" className="mt-4">
@@ -1553,6 +1712,10 @@ export default function SettingsPage() {
 
         <TabsContent value="competitor" className="mt-4">
           <CompetitorTab />
+        </TabsContent>
+
+        <TabsContent value="customers" className="mt-4">
+          <CustomersTab />
         </TabsContent>
 
       </Tabs>

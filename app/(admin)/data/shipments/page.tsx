@@ -69,8 +69,13 @@ export default function ShipmentsPage() {
   const [loadingBatches, setLoadingBatches] = useState(false)
   const [selectedBatchIds, setSelectedBatchIds] = useState<Set<string>>(new Set())
 
+  // ── Customer list (for import dialog) ────────────────────────────────────
+  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([])
+
   // ── Import dialog state ───────────────────────────────────────────────────
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('')
+  const [shipDate, setShipDate] = useState('')
   // Phase 1: file selected + columns extracted
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [excelColumns, setExcelColumns] = useState<string[]>([])
@@ -107,6 +112,10 @@ export default function ShipmentsPage() {
 
   useEffect(() => {
     loadBatches()
+    // Load customer list for import dialog
+    fetch('/api/customers').then((r) => r.json()).then((data) => {
+      if (Array.isArray(data)) setCustomers(data.filter((c: { is_active: boolean }) => c.is_active))
+    }).catch(() => {})
   }, [loadBatches])
 
   // ─── Template download ─────────────────────────────────────────────────────
@@ -183,6 +192,8 @@ export default function ShipmentsPage() {
       const formData = new FormData()
       formData.append('file', selectedFile)
       formData.append('mapping', JSON.stringify(mapping))
+      if (selectedCustomerId) formData.append('customer_id', selectedCustomerId)
+      if (shipDate) formData.append('ship_date', shipDate)
 
       const res = await fetch('/api/data/shipments', {
         method: 'POST',
@@ -210,6 +221,8 @@ export default function ShipmentsPage() {
     setExcelColumns([])
     setPreviewRows([])
     setMapping({})
+    setSelectedCustomerId('')
+    setShipDate('')
   }
 
   // ─── Batch selection ────────────────────────────────────────────────────────
@@ -384,6 +397,32 @@ export default function ShipmentsPage() {
               </DialogHeader>
 
               <div className="space-y-4 py-2">
+                {/* Customer + date (optional) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">客戶（選填）</p>
+                    <select
+                      value={selectedCustomerId}
+                      onChange={(e) => setSelectedCustomerId(e.target.value)}
+                      className="w-full border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="">— 不指定 —</option>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">出貨日期（選填）</p>
+                    <input
+                      type="date"
+                      value={shipDate}
+                      onChange={(e) => setShipDate(e.target.value)}
+                      className="w-full border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+
                 {/* Phase 1: Drop zone */}
                 <ExcelDropZone
                   onFile={handleFileSelected}

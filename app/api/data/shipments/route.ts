@@ -32,6 +32,8 @@ export async function POST(request: NextRequest) {
     if (!mappingRaw) return NextResponse.json({ error: '未提供欄位對應' }, { status: 400 })
 
     const mapping: Record<string, string> = JSON.parse(mappingRaw)
+    const customerId = (formData.get('customer_id') as string | null) || null
+    const shipDate = (formData.get('ship_date') as string | null) || null
 
     const buffer = await file.arrayBuffer()
     const wb = read(buffer, { type: 'array' })
@@ -96,7 +98,12 @@ export async function POST(request: NextRequest) {
     // Insert shipment records in chunks of 500
     const CHUNK = 500
     for (let i = 0; i < shipments.length; i += CHUNK) {
-      const chunk = shipments.slice(i, i + CHUNK).map((s) => ({ ...s, batch_id: batch.id }))
+      const chunk = shipments.slice(i, i + CHUNK).map((s) => ({
+        ...s,
+        batch_id: batch.id,
+        ...(customerId ? { customer_id: customerId } : {}),
+        ...(shipDate ? { ship_date: shipDate } : {}),
+      }))
       const { error } = await supabase.from('historical_shipments').insert(chunk)
       if (error) throw error
     }
